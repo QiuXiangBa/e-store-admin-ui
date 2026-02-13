@@ -136,6 +136,11 @@ export interface CategorySaveReq {
   status: number;
 }
 
+export interface CategorySortBatchItemReq {
+  id: number;
+  sort: number;
+}
+
 export interface PropertySaveReq {
   id?: number;
   name: string;
@@ -222,6 +227,10 @@ export function createCategory(data: CategorySaveReq) {
 
 export function updateCategory(data: CategorySaveReq) {
   return http.put<CategorySaveReq, BooleanResp>('/product/category/update', data);
+}
+
+export function updateCategorySortBatch(items: CategorySortBatchItemReq[]) {
+  return http.put<{ items: CategorySortBatchItemReq[] }, BooleanResp>('/product/category/update-sort-batch', { items });
 }
 
 export function deleteCategory(id: number) {

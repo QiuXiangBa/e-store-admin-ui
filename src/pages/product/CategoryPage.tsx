@@ -30,7 +30,8 @@ import {
   getPresignedDownloadUrl,
   getPresignedUploadUrl,
   type CategoryResp,
-  updateCategory
+  updateCategory,
+  updateCategorySortBatch
 } from '../../api/admin';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
@@ -83,6 +84,8 @@ export function CategoryPage() {
   const [picPreviewUrl, setPicPreviewUrl] = useState('');
   const [bigPicPreviewUrl, setBigPicPreviewUrl] = useState('');
   const [uploadTarget, setUploadTarget] = useState<'picUrl' | 'bigPicUrl'>('picUrl');
+  const [sortDraftMap, setSortDraftMap] = useState<Record<number, number>>({});
+  const [savingSort, setSavingSort] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const rootOptions = useMemo(() => list.filter((item) => item.parentId === 0), [list]);
@@ -101,6 +104,15 @@ export function CategoryPage() {
   useEffect(() => {
     void loadData();
   }, []);
+
+  useEffect(() => {
+    setSortDraftMap(
+      list.reduce<Record<number, number>>((acc, item) => {
+        acc[item.id] = item.sort;
+        return acc;
+      }, {})
+    );
+  }, [list]);
 
   useEffect(() => {
     let active = true;
@@ -247,11 +259,50 @@ export function CategoryPage() {
     void loadData();
   }
 
+  function patchSortValue(id: number, value: string) {
+    setSortDraftMap((prev) => ({ ...prev, [id]: Number(value) }));
+  }
+
+  const hasSortChanges = useMemo(
+    () => list.some((item) => sortDraftMap[item.id] !== undefined && sortDraftMap[item.id] !== item.sort),
+    [list, sortDraftMap]
+  );
+
+  async function saveSortBatch() {
+    const changedItems = list
+      .filter((item) => sortDraftMap[item.id] !== undefined && sortDraftMap[item.id] !== item.sort)
+      .map((item) => ({ id: item.id, sort: sortDraftMap[item.id] }));
+    if (!changedItems.length) {
+      setErrorMessage('没有需要保存的排序变更');
+      return;
+    }
+    if (changedItems.some((item) => Number.isNaN(item.sort) || item.sort < 0)) {
+      setErrorMessage('排序必须为大于等于 0 的数字');
+      return;
+    }
+
+    setSavingSort(true);
+    try {
+      await updateCategorySortBatch(changedItems);
+      setErrorMessage('');
+      await loadData();
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setSavingSort(false);
+    }
+  }
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">商品分类</Typography>
-        <Button onClick={openCreateDialog}>新增</Button>
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" onClick={() => void saveSortBatch()} disabled={savingSort || !hasSortChanges}>
+            {savingSort ? '保存中...' : '保存排序'}
+          </Button>
+          <Button onClick={openCreateDialog}>新增</Button>
+        </Stack>
       </Stack>
       {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
 
@@ -299,7 +350,14 @@ export function CategoryPage() {
                   <TableCell>
                     <Chip size="small" label={item.status === 0 ? '启用' : '禁用'} color={item.status === 0 ? 'success' : 'default'} />
                   </TableCell>
-                  <TableCell>{item.sort}</TableCell>
+                  <TableCell sx={{ width: 140 }}>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={sortDraftMap[item.id] ?? item.sort}
+                      onChange={(e) => patchSortValue(item.id, e.target.value)}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1}>
                       <Button size="small" variant="outlined" onClick={() => openEditDialog(item)}>
