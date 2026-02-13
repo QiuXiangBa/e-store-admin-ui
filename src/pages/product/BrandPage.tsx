@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import axios from 'axios';
 import {
   Alert,
@@ -184,6 +184,14 @@ export function BrandPage() {
     }
   }
 
+  function handleFilterEnter(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    setPageNum(1);
+    void loadData();
+  }
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -195,13 +203,20 @@ export function BrandPage() {
       <Card>
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-            <TextField label="品牌名称" size="small" value={name} onChange={(e) => setName(e.target.value)} />
+            <TextField
+              label="品牌名称"
+              size="small"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={handleFilterEnter}
+            />
             <TextField
               select
               label="状态"
               size="small"
               value={status}
               onChange={(e) => setStatus(e.target.value === '' ? '' : Number(e.target.value))}
+              onKeyDown={handleFilterEnter}
               sx={{ minWidth: 130 }}
             >
               <MenuItem value="">全部状态</MenuItem>
