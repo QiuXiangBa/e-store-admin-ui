@@ -236,6 +236,11 @@ export function CategoryPage() {
   }
 
   function handleNameFilterKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      setName('');
+      void loadData();
+      return;
+    }
     if (event.key !== 'Enter') {
       return;
     }
