@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -235,6 +235,13 @@ export function CategoryPage() {
     fileInputRef.current?.click();
   }
 
+  function handleNameFilterKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    void loadData();
+  }
+
   return (
     <Stack spacing={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -246,7 +253,13 @@ export function CategoryPage() {
       <Card>
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-            <TextField label="分类名称" size="small" value={name} onChange={(e) => setName(e.target.value)} />
+            <TextField
+              label="分类名称"
+              size="small"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={handleNameFilterKeyDown}
+            />
             <Button onClick={() => void loadData()}>搜索</Button>
             <Button variant="outlined" onClick={() => { setName(''); void loadData(); }}>
               重置
