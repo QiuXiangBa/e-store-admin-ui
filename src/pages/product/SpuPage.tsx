@@ -30,7 +30,7 @@ import {
   type SpuResp,
   updateSpuStatus
 } from '../../api/admin';
-import { getProductSpuStatusLabel, PRODUCT_SPU_STATUS } from '../../constants/productSpu';
+import { getProductSpuStatusLabel, PRODUCT_SPU_STATUS, PRODUCT_SPU_TAB } from '../../constants/productSpu';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Pagination } from '../../components/Pagination';
 
@@ -48,7 +48,7 @@ export function SpuPage() {
   const [pageNum, setPageNum] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [name, setName] = useState('');
-  const [status, setStatus] = useState<number>(PRODUCT_SPU_STATUS.ENABLE);
+  const [tabType, setTabType] = useState<number>(PRODUCT_SPU_TAB.FOR_SALE);
   const [categoryId, setCategoryId] = useState<number | ''>(categoryIdFromQuery);
   const [brandId, setBrandId] = useState<number | ''>('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -72,7 +72,7 @@ export function SpuPage() {
     try {
       const page = await getSpuPage(pageNum, pageSize, {
         name: name || undefined,
-        status,
+        tabType,
         categoryId: categoryId === '' ? undefined : categoryId,
         brandId: brandId === '' ? undefined : brandId
       });
@@ -90,7 +90,7 @@ export function SpuPage() {
 
   useEffect(() => {
     void loadData();
-  }, [pageNum, pageSize, status]);
+  }, [pageNum, pageSize, tabType]);
 
   async function onDelete(id: number) {
     try {
@@ -119,14 +119,50 @@ export function SpuPage() {
       </Stack>
       {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
 
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-        <Button variant={status === PRODUCT_SPU_STATUS.ENABLE ? 'contained' : 'outlined'} onClick={() => setStatus(PRODUCT_SPU_STATUS.ENABLE)}>
+      <Stack direction="row" spacing={1}>
+        <Button
+          variant={tabType === PRODUCT_SPU_TAB.FOR_SALE ? 'contained' : 'outlined'}
+          onClick={() => {
+            setTabType(PRODUCT_SPU_TAB.FOR_SALE);
+            setPageNum(1);
+          }}
+        >
           出售中({counts?.enableCount ?? 0})
         </Button>
-        <Button variant={status === PRODUCT_SPU_STATUS.DISABLE ? 'contained' : 'outlined'} onClick={() => setStatus(PRODUCT_SPU_STATUS.DISABLE)}>
+        <Button
+          variant={tabType === PRODUCT_SPU_TAB.IN_WAREHOUSE ? 'contained' : 'outlined'}
+          onClick={() => {
+            setTabType(PRODUCT_SPU_TAB.IN_WAREHOUSE);
+            setPageNum(1);
+          }}
+        >
           仓库中({counts?.disableCount ?? 0})
         </Button>
-        <Button variant={status === PRODUCT_SPU_STATUS.RECYCLE ? 'contained' : 'outlined'} onClick={() => setStatus(PRODUCT_SPU_STATUS.RECYCLE)}>
+        <Button
+          variant={tabType === PRODUCT_SPU_TAB.SOLD_OUT ? 'contained' : 'outlined'}
+          onClick={() => {
+            setTabType(PRODUCT_SPU_TAB.SOLD_OUT);
+            setPageNum(1);
+          }}
+        >
+          已售罄({counts?.soldOutCount ?? 0})
+        </Button>
+        <Button
+          variant={tabType === PRODUCT_SPU_TAB.ALERT_STOCK ? 'contained' : 'outlined'}
+          onClick={() => {
+            setTabType(PRODUCT_SPU_TAB.ALERT_STOCK);
+            setPageNum(1);
+          }}
+        >
+          警戒库存({counts?.alertStockCount ?? 0})
+        </Button>
+        <Button
+          variant={tabType === PRODUCT_SPU_TAB.RECYCLE_BIN ? 'contained' : 'outlined'}
+          onClick={() => {
+            setTabType(PRODUCT_SPU_TAB.RECYCLE_BIN);
+            setPageNum(1);
+          }}
+        >
           回收站({counts?.recycleCount ?? 0})
         </Button>
       </Stack>
@@ -215,7 +251,7 @@ export function SpuPage() {
                   </TableCell>
                   <TableCell>{categoryMap.get(item.categoryId) || item.categoryId}</TableCell>
                   <TableCell>{brandMap.get(item.brandId) || item.brandId}</TableCell>
-                  <TableCell>{item.price}</TableCell>
+                  <TableCell>¥ {fenToYuan(item.price)}</TableCell>
                   <TableCell>{item.salesCount}</TableCell>
                   <TableCell>{item.stock}</TableCell>
                   <TableCell>
@@ -234,7 +270,7 @@ export function SpuPage() {
                       <Button size="small" variant="outlined" onClick={() => navigate(`/product/spu/${item.id}/edit`)}>
                         修改
                       </Button>
-                      {item.status === PRODUCT_SPU_STATUS.RECYCLE ? (
+                      {tabType === PRODUCT_SPU_TAB.RECYCLE_BIN ? (
                         <Button size="small" variant="outlined" onClick={() => void onSwitchStatus(item.id, PRODUCT_SPU_STATUS.DISABLE)}>
                           恢复
                         </Button>
@@ -243,7 +279,7 @@ export function SpuPage() {
                           回收
                         </Button>
                       )}
-                      {item.status >= PRODUCT_SPU_STATUS.ENABLE ? (
+                      {item.status !== PRODUCT_SPU_STATUS.RECYCLE ? (
                         <Button
                           size="small"
                           variant="outlined"
@@ -257,7 +293,7 @@ export function SpuPage() {
                           {item.status === PRODUCT_SPU_STATUS.ENABLE ? '下架' : '上架'}
                         </Button>
                       ) : null}
-                      {item.status === PRODUCT_SPU_STATUS.RECYCLE ? (
+                      {tabType === PRODUCT_SPU_TAB.RECYCLE_BIN ? (
                         <Button
                           size="small"
                           color="error"
@@ -301,3 +337,7 @@ export function SpuPage() {
     </Stack>
   );
 }
+  function fenToYuan(price?: number) {
+    // 后端金额单位是分，前端列表统一展示元 / Backend uses fen; UI shows yuan
+    return ((price ?? 0) / 100).toFixed(2);
+  }

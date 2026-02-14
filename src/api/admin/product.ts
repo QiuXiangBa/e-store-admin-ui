@@ -38,10 +38,17 @@ export interface PropertyValueResp {
   createTime?: number;
 }
 
+export interface SkuProperty {
+  propertyId: number;
+  propertyName: string;
+  valueId: number;
+  valueName: string;
+}
+
 export interface SkuResp {
   id?: number;
   spuId?: number;
-  properties?: string;
+  properties?: SkuProperty[];
   price: number;
   marketPrice: number;
   costPrice: number;
@@ -65,11 +72,12 @@ export interface SpuResp {
   categoryId: number;
   brandId: number;
   picUrl: string;
-  sliderPicUrls?: string;
+  sliderPicUrls?: string[];
   videoUrl?: string;
   sort: number;
   status: number;
   specType: boolean;
+  deliveryTypes?: number[];
   deliveryTemplateId?: number;
   recommendHot?: boolean;
   recommendBenefit?: boolean;
@@ -94,6 +102,8 @@ export interface SpuResp {
 export interface SpuCountResp {
   enableCount: number;
   disableCount: number;
+  soldOutCount: number;
+  alertStockCount: number;
   recycleCount: number;
 }
 
@@ -166,10 +176,11 @@ export interface SpuSaveReq {
   categoryId: number;
   brandId: number;
   picUrl: string;
-  sliderPicUrls?: string;
+  sliderPicUrls?: string[];
   videoUrl?: string;
   sort: number;
   specType: boolean;
+  deliveryTypes: number[];
   deliveryTemplateId?: number;
   recommendHot?: boolean;
   recommendBenefit?: boolean;
@@ -277,6 +288,10 @@ export function getPropertyValuePage(
   });
 }
 
+export function getPropertyValueSimpleList(propertyId: number) {
+  return http.get<never, PropertyValueResp[]>('/product/property/value/simple-list', { params: { propertyId } });
+}
+
 export function createPropertyValue(data: PropertyValueSaveReq) {
   return http.post<PropertyValueSaveReq, IdResp>('/product/property/value/create', data);
 }
@@ -296,7 +311,7 @@ export function getSpuCount() {
 export function getSpuPage(
   pageNum: number,
   pageSize: number,
-  filters: { name?: string; status?: number; categoryId?: number; brandId?: number }
+  filters: { name?: string; tabType?: number; categoryId?: number; brandId?: number }
 ) {
   return http.get<never, PageResp<SpuResp>>('/product/spu/page', {
     params: getPageParams(pageNum, pageSize, filters)
