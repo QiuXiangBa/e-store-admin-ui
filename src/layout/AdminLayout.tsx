@@ -22,6 +22,7 @@ import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import ChecklistOutlinedIcon from '@mui/icons-material/ChecklistOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import ReviewsOutlinedIcon from '@mui/icons-material/ReviewsOutlined';
+import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
 import KeyboardDoubleArrowLeftIcon from '@mui/icons-material/KeyboardDoubleArrowLeft';
 import KeyboardDoubleArrowRightIcon from '@mui/icons-material/KeyboardDoubleArrowRight';
 import { logout } from '../api/admin';
@@ -30,6 +31,7 @@ const navItems = [
   { to: '/', label: '概览', icon: <DashboardOutlinedIcon fontSize="small" /> },
   { to: '/product/brand', label: '商品品牌', icon: <LabelOutlinedIcon fontSize="small" /> },
   { to: '/product/category', label: '商品分类', icon: <AccountTreeOutlinedIcon fontSize="small" /> },
+  { to: '/product/category-property', label: '类目属性绑定', icon: <LinkOutlinedIcon fontSize="small" /> },
   { to: '/product/property', label: '商品属性', icon: <TuneOutlinedIcon fontSize="small" /> },
   { to: '/product/property-values', label: '属性值', icon: <ChecklistOutlinedIcon fontSize="small" /> },
   { to: '/product/spu', label: '商品 SPU', icon: <Inventory2OutlinedIcon fontSize="small" /> },
