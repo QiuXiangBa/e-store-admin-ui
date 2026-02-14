@@ -27,6 +27,8 @@ import { Pagination } from '../../components/Pagination';
 
 const EMPTY_FORM = {
   name: '',
+  propertyType: 1,
+  inputType: 1,
   status: 0,
   remark: ''
 };
@@ -38,6 +40,7 @@ export function PropertyPage() {
   const [pageNum, setPageNum] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [name, setName] = useState('');
+  const [propertyType, setPropertyType] = useState<number | ''>('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -46,7 +49,10 @@ export function PropertyPage() {
 
   async function loadData() {
     try {
-      const page = await getPropertyPage(pageNum, pageSize, { name: name || undefined });
+      const page = await getPropertyPage(pageNum, pageSize, {
+        name: name || undefined,
+        propertyType: propertyType === '' ? undefined : propertyType
+      });
       setList(page.list || []);
       setTotal(page.total || 0);
       setErrorMessage('');
@@ -67,7 +73,13 @@ export function PropertyPage() {
 
   function openEditDialog(item: PropertyResp) {
     setEditingId(item.id);
-    setForm({ name: item.name, status: item.status, remark: item.remark || '' });
+    setForm({
+      name: item.name,
+      propertyType: item.propertyType ?? 1,
+      inputType: item.inputType ?? 1,
+      status: item.status,
+      remark: item.remark || ''
+    });
     setFormOpen(true);
   }
 
@@ -113,8 +125,20 @@ export function PropertyPage() {
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
             <TextField label="规格名称" size="small" value={name} onChange={(e) => setName(e.target.value)} />
+            <TextField
+              select
+              label="属性类型"
+              size="small"
+              value={propertyType}
+              onChange={(e) => setPropertyType(e.target.value === '' ? '' : Number(e.target.value))}
+              sx={{ minWidth: 140 }}
+            >
+              <MenuItem value="">全部</MenuItem>
+              <MenuItem value={0}>展示属性</MenuItem>
+              <MenuItem value={1}>销售属性</MenuItem>
+            </TextField>
             <Button onClick={() => void loadData()}>搜索</Button>
-            <Button variant="outlined" onClick={() => { setName(''); setPageNum(1); void loadData(); }}>
+            <Button variant="outlined" onClick={() => { setName(''); setPropertyType(''); setPageNum(1); void loadData(); }}>
               重置
             </Button>
           </Stack>
@@ -127,6 +151,7 @@ export function PropertyPage() {
             <TableRow>
               <TableCell>ID</TableCell>
               <TableCell>名称</TableCell>
+              <TableCell>属性类型</TableCell>
               <TableCell>状态</TableCell>
               <TableCell>备注</TableCell>
               <TableCell>创建时间</TableCell>
@@ -135,12 +160,13 @@ export function PropertyPage() {
           </TableHead>
           <TableBody>
             {list.length === 0 ? (
-              <TableRow><TableCell colSpan={6}>暂无数据</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7}>暂无数据</TableCell></TableRow>
             ) : (
               list.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>{item.id}</TableCell>
                   <TableCell>{item.name}</TableCell>
+                  <TableCell>{item.propertyType === 0 ? '展示属性' : '销售属性'}</TableCell>
                   <TableCell>
                     <Chip size="small" label={item.status === 0 ? '启用' : '禁用'} color={item.status === 0 ? 'success' : 'default'} />
                   </TableCell>
@@ -175,6 +201,17 @@ export function PropertyPage() {
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <TextField fullWidth size="small" label="规格名称*" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="属性类型"
+              value={form.propertyType}
+              onChange={(e) => setForm({ ...form, propertyType: Number(e.target.value) })}
+            >
+              <MenuItem value={0}>展示属性</MenuItem>
+              <MenuItem value={1}>销售属性</MenuItem>
+            </TextField>
             <TextField select fullWidth size="small" label="状态" value={form.status} onChange={(e) => setForm({ ...form, status: Number(e.target.value) })}>
               <MenuItem value={0}>启用</MenuItem>
               <MenuItem value={1}>禁用</MenuItem>

@@ -8,6 +8,9 @@ const DashboardPage = lazy(() => import('../pages/DashboardPage').then((m) => ({
 const LoginPage = lazy(() => import('../pages/LoginPage').then((m) => ({ default: m.LoginPage })));
 const BrandPage = lazy(() => import('../pages/product/BrandPage').then((m) => ({ default: m.BrandPage })));
 const CategoryPage = lazy(() => import('../pages/product/CategoryPage').then((m) => ({ default: m.CategoryPage })));
+const CategoryPropertyBindingPage = lazy(() =>
+  import('../pages/product/CategoryPropertyBindingPage').then((m) => ({ default: m.CategoryPropertyBindingPage }))
+);
 const CommentPage = lazy(() => import('../pages/product/CommentPage').then((m) => ({ default: m.CommentPage })));
 const PropertyPage = lazy(() => import('../pages/product/PropertyPage').then((m) => ({ default: m.PropertyPage })));
 const PropertyValuePage = lazy(() =>
@@ -85,6 +88,7 @@ export function AppRouter() {
           <Route index element={<DashboardPage />} />
           <Route path="product/brand" element={<BrandPage />} />
           <Route path="product/category" element={<CategoryPage />} />
+          <Route path="product/category-property" element={<CategoryPropertyBindingPage />} />
           <Route path="product/property" element={<PropertyPage />} />
           <Route path="product/property-values" element={<PropertyValuePage />} />
           <Route path="product/comment" element={<CommentPage />} />

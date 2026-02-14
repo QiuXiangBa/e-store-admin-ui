@@ -298,6 +298,9 @@ export function CategoryPage() {
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">商品分类</Typography>
         <Stack direction="row" spacing={1}>
+          <Button variant="outlined" onClick={() => navigate('/product/category-property')}>
+            属性关联
+          </Button>
           <Button variant="outlined" onClick={() => void saveSortBatch()} disabled={savingSort || !hasSortChanges}>
             {savingSort ? '保存中...' : '保存排序'}
           </Button>

@@ -24,6 +24,8 @@ export interface CategoryResp {
 export interface PropertyResp {
   id: number;
   name: string;
+  propertyType?: number;
+  inputType?: number;
   status: number;
   remark?: string;
   createTime?: number;
@@ -88,6 +90,7 @@ export interface SpuResp {
   giveCouponTemplateIds?: string;
   subCommissionType?: boolean;
   activityOrders?: string;
+  displayProperties?: SpuDisplayProperty[];
   price: number;
   marketPrice: number;
   costPrice: number;
@@ -154,6 +157,8 @@ export interface CategorySortBatchItemReq {
 export interface PropertySaveReq {
   id?: number;
   name: string;
+  propertyType: number;
+  inputType?: number;
   status: number;
   remark?: string;
 }
@@ -191,7 +196,36 @@ export interface SpuSaveReq {
   giveCouponTemplateIds?: string;
   subCommissionType?: boolean;
   activityOrders?: string;
+  displayProperties?: SpuDisplayProperty[];
   skus: SkuResp[];
+}
+
+export interface SpuDisplayProperty {
+  propertyId: number;
+  propertyName?: string;
+  valueText: string;
+  sort?: number;
+}
+
+export interface CategoryPropertyResp {
+  id: number;
+  categoryId: number;
+  propertyId: number;
+  propertyName: string;
+  propertyType: number;
+  enabled: boolean;
+  required: boolean;
+  sort: number;
+}
+
+export interface CategoryPropertySaveReq {
+  categoryId: number;
+  items: Array<{
+    propertyId: number;
+    enabled: boolean;
+    required: boolean;
+    sort: number;
+  }>;
 }
 
 interface IdResp {
@@ -248,6 +282,16 @@ export function deleteCategory(id: number) {
   return http.delete<never, BooleanResp>('/product/category/delete', { params: { id } });
 }
 
+export function getCategoryPropertyList(categoryId: number, propertyType?: number) {
+  return http.get<never, CategoryPropertyResp[]>('/product/category/property/list', {
+    params: { categoryId, propertyType }
+  });
+}
+
+export function saveCategoryPropertyBatch(data: CategoryPropertySaveReq) {
+  return http.put<CategoryPropertySaveReq, BooleanResp>('/product/category/property/save-batch', data);
+}
+
 export function getPresignedUploadUrl(data: PresignedUploadUrlReq) {
   return http.post<PresignedUploadUrlReq, PresignedUploadUrlResp>('/system/file/presigned-upload-url', data);
 }
@@ -256,7 +300,11 @@ export function getPresignedDownloadUrl(data: PresignedDownloadUrlReq) {
   return http.post<PresignedDownloadUrlReq, PresignedDownloadUrlResp>('/system/file/presigned-download-url', data);
 }
 
-export function getPropertyPage(pageNum: number, pageSize: number, filters: { name?: string; status?: number }) {
+export function getPropertyPage(
+  pageNum: number,
+  pageSize: number,
+  filters: { name?: string; status?: number; propertyType?: number }
+) {
   return http.get<never, PageResp<PropertyResp>>('/product/property/page', {
     params: getPageParams(pageNum, pageSize, filters)
   });
@@ -264,6 +312,10 @@ export function getPropertyPage(pageNum: number, pageSize: number, filters: { na
 
 export function getPropertySimpleList() {
   return http.get<never, PropertyResp[]>('/product/property/simple-list');
+}
+
+export function getPropertySimpleListByType(propertyType?: number) {
+  return http.get<never, PropertyResp[]>('/product/property/simple-list', { params: { propertyType } });
 }
 
 export function createProperty(data: PropertySaveReq) {
