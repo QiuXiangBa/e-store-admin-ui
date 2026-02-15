@@ -45,6 +45,8 @@ type BindingRow = {
   selected: boolean;
   enabled: boolean;
   required: boolean;
+  supportValueImage: boolean;
+  valueImageRequired: boolean;
   sort: number;
 };
 
@@ -68,6 +70,8 @@ function mergeBindingRows(
         selected: Boolean(bound),
         enabled: bound ? bound.enabled : true,
         required: bound ? bound.required : false,
+        supportValueImage: bound ? bound.supportValueImage : false,
+        valueImageRequired: bound ? bound.valueImageRequired : false,
         sort: bound ? bound.sort : (index + 1) * 10
       };
     })
@@ -189,6 +193,8 @@ export function CategoryPropertyBindingPage() {
             propertyId: item.propertyId,
             enabled: item.enabled,
             required: item.required,
+            supportValueImage: item.supportValueImage,
+            valueImageRequired: item.valueImageRequired,
             sort: item.sort
           }))
       });
@@ -250,7 +256,7 @@ export function CategoryPropertyBindingPage() {
         <Box sx={{ p: 2 }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
             <Typography variant="body2" color="text.secondary">
-              勾选后即加入当前分类，支持设置启用、必填和排序
+              勾选后即加入当前分类，支持设置启用、必填、配图能力和排序
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button
@@ -290,13 +296,15 @@ export function CategoryPropertyBindingPage() {
                   <TableCell>属性名称</TableCell>
                   <TableCell width={100}>启用</TableCell>
                   <TableCell width={100}>必填</TableCell>
+                  <TableCell width={120}>支持规格值配图</TableCell>
+                  <TableCell width={120}>规格值图片必填</TableCell>
                   <TableCell width={120}>排序</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {!activeRows.length ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={8}>
                       <Typography variant="body2" color="text.secondary">
                         {categoryId ? '该类型暂无可用属性，请先到“商品规格”创建属性' : '请先选择分类'}
                       </Typography>
@@ -312,7 +320,15 @@ export function CategoryPropertyBindingPage() {
                             patchSingleRow(row.propertyId, (prev) => ({
                               ...prev,
                               selected: event.target.checked,
-                              required: event.target.checked ? prev.required : false
+                              required: event.target.checked ? prev.required : false,
+                              supportValueImage:
+                                event.target.checked && row.propertyType === PROPERTY_TYPE_SALES
+                                  ? prev.supportValueImage
+                                  : false,
+                              valueImageRequired:
+                                event.target.checked && row.propertyType === PROPERTY_TYPE_SALES
+                                  ? prev.valueImageRequired
+                                  : false
                             }))
                           }
                         />
@@ -331,7 +347,15 @@ export function CategoryPropertyBindingPage() {
                                 patchSingleRow(row.propertyId, (prev) => ({
                                   ...prev,
                                   enabled: event.target.checked,
-                                  required: event.target.checked ? prev.required : false
+                                  required: event.target.checked ? prev.required : false,
+                                  supportValueImage:
+                                    event.target.checked && row.propertyType === PROPERTY_TYPE_SALES
+                                      ? prev.supportValueImage
+                                      : false,
+                                  valueImageRequired:
+                                    event.target.checked && row.propertyType === PROPERTY_TYPE_SALES
+                                      ? prev.valueImageRequired
+                                      : false
                                 }))
                               }
                             />
@@ -351,6 +375,50 @@ export function CategoryPropertyBindingPage() {
                                 patchSingleRow(row.propertyId, (prev) => ({
                                   ...prev,
                                   required: event.target.checked
+                                }))
+                              }
+                            />
+                          }
+                          label=""
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <FormControlLabel
+                          sx={{ m: 0 }}
+                          control={
+                            <Switch
+                              size="small"
+                              checked={row.supportValueImage}
+                              disabled={!row.selected || !row.enabled || row.propertyType !== PROPERTY_TYPE_SALES}
+                              onChange={(event) =>
+                                patchSingleRow(row.propertyId, (prev) => ({
+                                  ...prev,
+                                  supportValueImage: event.target.checked,
+                                  valueImageRequired: event.target.checked ? prev.valueImageRequired : false
+                                }))
+                              }
+                            />
+                          }
+                          label=""
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <FormControlLabel
+                          sx={{ m: 0 }}
+                          control={
+                            <Switch
+                              size="small"
+                              checked={row.valueImageRequired}
+                              disabled={
+                                !row.selected ||
+                                !row.enabled ||
+                                row.propertyType !== PROPERTY_TYPE_SALES ||
+                                !row.supportValueImage
+                              }
+                              onChange={(event) =>
+                                patchSingleRow(row.propertyId, (prev) => ({
+                                  ...prev,
+                                  valueImageRequired: event.target.checked
                                 }))
                               }
                             />
@@ -385,4 +453,3 @@ export function CategoryPropertyBindingPage() {
     </Stack>
   );
 }
-

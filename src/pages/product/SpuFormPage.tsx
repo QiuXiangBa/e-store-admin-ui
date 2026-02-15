@@ -50,7 +50,7 @@ const PROPERTY_TYPE_SALES = 1;
 type PropertyAndValues = {
   id: number;
   name: string;
-  values: Array<{ id: number; name: string }>;
+  values: Array<{ id: number; name: string; picUrl?: string }>;
 };
 
 type SalesSelectionMap = Record<number, PropertyValueResp[]>;
@@ -130,12 +130,12 @@ function buildPropertyListFromSkus(skus: SkuResp[]): PropertyAndValues[] {
         propertyMap.set(property.propertyId, {
           id: property.propertyId,
           name: property.propertyName,
-          values: [{ id: property.valueId, name: property.valueName }]
+          values: [{ id: property.valueId, name: property.valueName, picUrl: property.valuePicUrl }]
         });
         return;
       }
       if (!exists.values.some((value) => value.id === property.valueId)) {
-        exists.values.push({ id: property.valueId, name: property.valueName });
+        exists.values.push({ id: property.valueId, name: property.valueName, picUrl: property.valuePicUrl });
       }
     });
   });
@@ -157,7 +157,8 @@ function buildSkuCombinations(propertyList: PropertyAndValues[]): SkuProperty[][
             propertyId: property.id,
             propertyName: property.name,
             valueId: value.id,
-            valueName: value.name
+            valueName: value.name,
+            valuePicUrl: value.picUrl
           }
         ]);
       });
@@ -216,7 +217,7 @@ export function SpuFormPage() {
         return {
           id: property.propertyId,
           name: property.propertyName,
-          values: selectedValues.map((item) => ({ id: item.id, name: item.name }))
+          values: selectedValues.map((item) => ({ id: item.id, name: item.name, picUrl: item.picUrl }))
         };
       })
       .filter((item) => item.values.length > 0);
@@ -298,6 +299,7 @@ export function SpuFormPage() {
           id: value.id,
           propertyId: item.id,
           name: value.name,
+          picUrl: value.picUrl,
           status: DEFAULT_STATUS_OPEN
         }));
         return accumulator;
@@ -403,6 +405,14 @@ export function SpuFormPage() {
     });
   }
 
+  function resolveSkuDisplayPicUrl(sku: SkuResp) {
+    if (sku.picUrl?.trim()) {
+      return sku.picUrl;
+    }
+    const valuePicUrl = (sku.properties ?? []).map((item) => item.valuePicUrl).find((item) => Boolean(item?.trim()));
+    return valuePicUrl || form.picUrl || '';
+  }
+
   function patchDisplayProperty(propertyId: number, propertyName: string, valueText: string, sort: number) {
     setForm((prev) => {
       const currentList = [...(prev.displayProperties ?? [])];
@@ -474,11 +484,6 @@ export function SpuFormPage() {
     if (form.deliveryTypes.includes(DELIVERY_TYPE_EXPRESS) && !form.deliveryTemplateId) {
       setErrorMessage('选择快递配送时必须填写运费模板 ID');
       setActiveTab('delivery');
-      return;
-    }
-    if (form.skus.some((item) => !item.picUrl)) {
-      setErrorMessage('SKU 图片不能为空');
-      setActiveTab('sku');
       return;
     }
     if (form.specType && form.skus.some((item) => !item.properties || item.properties.length === 0)) {
@@ -746,7 +751,11 @@ export function SpuFormPage() {
                             value={sku.picUrl || ''}
                             disabled={readonly}
                             onChange={(e) => patchSku(index, 'picUrl', e.target.value)}
+                            placeholder={readonly ? '' : '可选，留空时回退'}
                           />
+                          <Typography variant="caption" color="text.secondary">
+                            展示图：{resolveSkuDisplayPicUrl(sku) || '-'}
+                          </Typography>
                         </TableCell>
                         {form.specType &&
                           propertyList.map((property) => {

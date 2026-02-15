@@ -37,6 +37,7 @@ export interface PropertyValueResp {
   name: string;
   status: number;
   remark?: string;
+  picUrl?: string;
   createTime?: number;
 }
 
@@ -45,6 +46,7 @@ export interface SkuProperty {
   propertyName: string;
   valueId: number;
   valueName: string;
+  valuePicUrl?: string;
 }
 
 export interface SkuResp {
@@ -169,6 +171,7 @@ export interface PropertyValueSaveReq {
   name: string;
   status: number;
   remark?: string;
+  picUrl?: string;
 }
 
 export interface SpuSaveReq {
@@ -215,6 +218,8 @@ export interface CategoryPropertyResp {
   propertyType: number;
   enabled: boolean;
   required: boolean;
+  supportValueImage: boolean;
+  valueImageRequired: boolean;
   sort: number;
 }
 
@@ -224,6 +229,8 @@ export interface CategoryPropertySaveReq {
     propertyId: number;
     enabled: boolean;
     required: boolean;
+    supportValueImage: boolean;
+    valueImageRequired: boolean;
     sort: number;
   }>;
 }

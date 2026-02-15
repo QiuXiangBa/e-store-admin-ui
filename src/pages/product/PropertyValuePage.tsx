@@ -22,10 +22,14 @@ import {
   Typography
 } from '@mui/material';
 import {
+  getCategoryList,
+  getCategoryPropertyList,
   createPropertyValue,
   deletePropertyValue,
   getPropertyPage,
   getPropertyValuePage,
+  type CategoryPropertyResp,
+  type CategoryResp,
   type PropertyResp,
   type PropertyValueResp,
   updatePropertyValue
@@ -37,14 +41,20 @@ const EMPTY_FORM = {
   propertyId: 0,
   name: '',
   status: 0,
-  remark: ''
+  remark: '',
+  picUrl: ''
 };
+
+const PROPERTY_TYPE_SALES = 1;
 
 export function PropertyValuePage() {
   const [searchParams] = useSearchParams();
   const fixedPropertyId = searchParams.get('propertyId') ? Number(searchParams.get('propertyId')) : 0;
 
   const [properties, setProperties] = useState<PropertyResp[]>([]);
+  const [categories, setCategories] = useState<CategoryResp[]>([]);
+  const [categoryId, setCategoryId] = useState<number | ''>('');
+  const [categoryPropertyMap, setCategoryPropertyMap] = useState<Record<number, CategoryPropertyResp>>({});
   const [list, setList] = useState<PropertyValueResp[]>([]);
   const [total, setTotal] = useState(0);
   const [pageNum, setPageNum] = useState(1);
@@ -62,10 +72,25 @@ export function PropertyValuePage() {
 
   async function loadProperties() {
     try {
-      const page = await getPropertyPage(1, 200, {});
+      const [page, categoryList] = await Promise.all([getPropertyPage(1, 200, {}), getCategoryList()]);
       setProperties(page.list || []);
+      setCategories(categoryList || []);
     } catch (error) {
       setErrorMessage((error as Error).message);
+    }
+  }
+
+  async function loadCategoryPropertyBindings(targetCategoryId: number) {
+    try {
+      const list = await getCategoryPropertyList(targetCategoryId, PROPERTY_TYPE_SALES);
+      const nextMap = list.reduce<Record<number, CategoryPropertyResp>>((accumulator, item) => {
+        accumulator[item.propertyId] = item;
+        return accumulator;
+      }, {});
+      setCategoryPropertyMap(nextMap);
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+      setCategoryPropertyMap({});
     }
   }
 
@@ -88,6 +113,14 @@ export function PropertyValuePage() {
   }, []);
 
   useEffect(() => {
+    if (!categoryId) {
+      setCategoryPropertyMap({});
+      return;
+    }
+    void loadCategoryPropertyBindings(categoryId);
+  }, [categoryId]);
+
+  useEffect(() => {
     void loadData();
   }, [pageNum, pageSize]);
 
@@ -103,7 +136,8 @@ export function PropertyValuePage() {
       propertyId: item.propertyId,
       name: item.name,
       status: item.status,
-      remark: item.remark || ''
+      remark: item.remark || '',
+      picUrl: item.picUrl || ''
     });
     setFormOpen(true);
   }
@@ -114,11 +148,21 @@ export function PropertyValuePage() {
       setErrorMessage('请填写规格和规格值名称');
       return;
     }
+    const targetBinding = categoryPropertyMap[currentPropertyId];
+    const supportValueImage = Boolean(targetBinding?.supportValueImage);
+    const valueImageRequired = Boolean(targetBinding?.valueImageRequired);
+    if (valueImageRequired && !form.picUrl?.trim()) {
+      setErrorMessage('当前类目设置了规格值图片必填，请补充图片 URL');
+      return;
+    }
     try {
+      const payload = supportValueImage
+        ? { ...form, propertyId: currentPropertyId }
+        : { ...form, propertyId: currentPropertyId, picUrl: '' };
       if (editingId) {
-        await updatePropertyValue({ ...form, propertyId: currentPropertyId, id: editingId });
+        await updatePropertyValue({ ...payload, id: editingId });
       } else {
-        await createPropertyValue({ ...form, propertyId: currentPropertyId });
+        await createPropertyValue(payload);
       }
       setFormOpen(false);
       setEditingId(null);
@@ -153,6 +197,19 @@ export function PropertyValuePage() {
             <TextField
               select
               size="small"
+              label="分类（用于判定配图能力）"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value === '' ? '' : Number(e.target.value))}
+              sx={{ minWidth: 220 }}
+            >
+              <MenuItem value="">未选择分类</MenuItem>
+              {categories.map((item) => (
+                <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
               label="规格"
               value={fixedPropertyId || propertyId}
               onChange={(e) => setPropertyId(e.target.value === '' ? '' : Number(e.target.value))}
@@ -178,6 +235,7 @@ export function PropertyValuePage() {
               <TableCell>规格</TableCell>
               <TableCell>值名称</TableCell>
               <TableCell>状态</TableCell>
+              <TableCell>图片</TableCell>
               <TableCell>备注</TableCell>
               <TableCell>创建时间</TableCell>
               <TableCell>操作</TableCell>
@@ -185,7 +243,7 @@ export function PropertyValuePage() {
           </TableHead>
           <TableBody>
             {list.length === 0 ? (
-              <TableRow><TableCell colSpan={7}>暂无数据</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}>暂无数据</TableCell></TableRow>
             ) : (
               list.map((item) => (
                 <TableRow key={item.id}>
@@ -194,6 +252,9 @@ export function PropertyValuePage() {
                   <TableCell>{item.name}</TableCell>
                   <TableCell>
                     <Chip size="small" label={item.status === 0 ? '启用' : '禁用'} color={item.status === 0 ? 'success' : 'default'} />
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 220, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {item.picUrl || '-'}
                   </TableCell>
                   <TableCell>{item.remark || '-'}</TableCell>
                   <TableCell>{item.createTime ? new Date(item.createTime).toLocaleString() : '-'}</TableCell>
@@ -243,6 +304,16 @@ export function PropertyValuePage() {
               <MenuItem value={0}>启用</MenuItem>
               <MenuItem value={1}>禁用</MenuItem>
             </TextField>
+            {(categoryPropertyMap[fixedPropertyId || form.propertyId]?.supportValueImage ?? false) ? (
+              <TextField
+                fullWidth
+                size="small"
+                label={`图片 URL${categoryPropertyMap[fixedPropertyId || form.propertyId]?.valueImageRequired ? '*' : ''}`}
+                value={form.picUrl}
+                onChange={(e) => setForm({ ...form, picUrl: e.target.value })}
+                helperText={categoryPropertyMap[fixedPropertyId || form.propertyId]?.valueImageRequired ? '当前类目要求规格值图片必填' : '仅支持配图的销售属性可填写'}
+              />
+            ) : null}
             <TextField fullWidth size="small" label="备注" value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} />
           </Stack>
         </DialogContent>
