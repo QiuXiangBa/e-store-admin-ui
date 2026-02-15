@@ -260,6 +260,7 @@ export function CategoryPage() {
   }
 
   function patchSortValue(id: number, value: string) {
+    // 本地维护排序草稿，点击保存后才会落库。 / Keep sort edits in local draft; persist only after explicit save.
     setSortDraftMap((prev) => ({ ...prev, [id]: Number(value) }));
   }
 
@@ -269,6 +270,7 @@ export function CategoryPage() {
   );
 
   async function saveSortBatch() {
+    // 仅提交有变更的行，减少请求体并避免无效更新。 / Submit only changed rows to reduce payload and avoid unnecessary updates.
     const changedItems = list
       .filter((item) => sortDraftMap[item.id] !== undefined && sortDraftMap[item.id] !== item.sort)
       .map((item) => ({ id: item.id, sort: sortDraftMap[item.id] }));
