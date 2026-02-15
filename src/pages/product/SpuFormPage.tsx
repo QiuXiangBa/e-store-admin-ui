@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -13,13 +13,11 @@ import {
   Grid,
   MenuItem,
   Stack,
-  Tab,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Checkbox,
   Typography,
@@ -47,6 +45,10 @@ const DELIVERY_TYPE_PICK_UP = 2;
 const DELIVERY_TYPE_SAME_CITY = 3;
 const PROPERTY_TYPE_DISPLAY = 0;
 const PROPERTY_TYPE_SALES = 1;
+const APP_BAR_HEIGHT = 64;
+const SECTION_STICKY_GAP = 8;
+const SECTION_STICKY_TOP = APP_BAR_HEIGHT + SECTION_STICKY_GAP;
+const SECTION_SCROLL_MARGIN_TOP = SECTION_STICKY_TOP + 56;
 
 type PropertyAndValues = {
   id: number;
@@ -188,7 +190,15 @@ function mergeSkusByProperty(prevSkus: SkuResp[], propertyList: PropertyAndValue
   });
 }
 
-type FormTab = 'info' | 'sku' | 'delivery' | 'description' | 'other';
+type FormSection = 'info' | 'sku' | 'delivery' | 'description' | 'other';
+
+const FORM_SECTION_NAV: Array<{ key: FormSection; label: string }> = [
+  { key: 'info', label: '基础信息' },
+  { key: 'sku', label: '销售信息' },
+  { key: 'delivery', label: '物流服务' },
+  { key: 'description', label: '图文描述' },
+  { key: 'other', label: '其它设置' }
+];
 
 export function SpuFormPage() {
   const navigate = useNavigate();
@@ -208,14 +218,26 @@ export function SpuFormPage() {
   const [batchSku, setBatchSku] = useState<SkuResp>(createDefaultSku());
 
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<FormTab>('info');
+  const [activeSection, setActiveSection] = useState<FormSection>('info');
   const [form, setForm] = useState<SpuSaveReq>(createDefaultForm());
   const [errorMessage, setErrorMessage] = useState('');
+  const sectionRefs = useRef<Record<FormSection, HTMLDivElement | null>>({
+    info: null,
+    sku: null,
+    delivery: null,
+    description: null,
+    other: null
+  });
 
   const pageTitle = useMemo(() => {
     if (!spuId) return '新增商品';
     return isDetail ? `商品详情 #${spuId}` : `编辑商品 #${spuId}`;
   }, [isDetail, spuId]);
+
+  function scrollToSection(sectionKey: FormSection) {
+    sectionRefs.current[sectionKey]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActiveSection(sectionKey);
+  }
 
   function rebuildPropertyListFromSlots(nextSlots: SalesSlotMap) {
     const nextPropertyList: PropertyAndValues[] = salesPropertyOptions
@@ -378,6 +400,23 @@ export function SpuFormPage() {
       }
     });
   }, [salesPropertyOptions]);
+
+  useEffect(() => {
+    function syncActiveSectionByScroll() {
+      const offset = SECTION_SCROLL_MARGIN_TOP;
+      let current: FormSection = 'info';
+      FORM_SECTION_NAV.forEach((section) => {
+        const top = sectionRefs.current[section.key]?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+        if (top - offset <= 0) {
+          current = section.key;
+        }
+      });
+      setActiveSection(current);
+    }
+    window.addEventListener('scroll', syncActiveSectionByScroll, { passive: true });
+    syncActiveSectionByScroll();
+    return () => window.removeEventListener('scroll', syncActiveSectionByScroll);
+  }, []);
 
   useEffect(() => {
     if (!form.specType) {
@@ -546,19 +585,19 @@ export function SpuFormPage() {
     }
     if (!form.name || !form.keyword || !form.introduction || !form.description || !form.picUrl) {
       setErrorMessage('请完善基础设置');
-      setActiveTab('info');
+      setActiveSection('info');
       return;
     }
     if (!form.categoryId || !form.brandId) {
       setErrorMessage('请选择分类和品牌');
-      setActiveTab('info');
+      setActiveSection('info');
       return;
     }
     const requiredDisplayProperties = displayPropertyOptions.filter((item) => item.required);
     const displayValueMap = new Map((form.displayProperties ?? []).map((item) => [item.propertyId, item.valueText]));
     if (requiredDisplayProperties.some((item) => !displayValueMap.get(item.propertyId)?.trim())) {
       setErrorMessage('请填写类目必填展示属性');
-      setActiveTab('info');
+      setActiveSection('info');
       return;
     }
     if (form.specType) {
@@ -568,33 +607,33 @@ export function SpuFormPage() {
       );
       if (requiredSalesProperties.some((item) => !(selectedSalesValueMap.get(item.propertyId) ?? []).length)) {
         setErrorMessage('请先完成必填销售属性的值选择');
-        setActiveTab('sku');
+        setActiveSection('sku');
         return;
       }
       if (!propertyList.length) {
         setErrorMessage('多规格模式下请先选择销售属性值');
-        setActiveTab('sku');
+        setActiveSection('sku');
         return;
       }
     }
     if (!form.skus.length) {
       setErrorMessage('请至少配置一条 SKU');
-      setActiveTab('sku');
+      setActiveSection('sku');
       return;
     }
     if (!form.deliveryTypes.length) {
       setErrorMessage('请至少选择一种配送方式');
-      setActiveTab('delivery');
+      setActiveSection('delivery');
       return;
     }
     if (form.deliveryTypes.includes(DELIVERY_TYPE_EXPRESS) && !form.deliveryTemplateId) {
       setErrorMessage('选择快递配送时必须填写运费模板 ID');
-      setActiveTab('delivery');
+      setActiveSection('delivery');
       return;
     }
     if (form.specType && form.skus.some((item) => !item.properties || item.properties.length === 0)) {
       setErrorMessage('多规格模式下每个 SKU 必须包含属性组合');
-      setActiveTab('sku');
+      setActiveSection('sku');
       return;
     }
 
@@ -627,7 +666,7 @@ export function SpuFormPage() {
   }
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={{ pb: 10 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">{pageTitle}</Typography>
         <Button variant="outlined" onClick={() => navigate('/product/spu')}>
@@ -645,26 +684,39 @@ export function SpuFormPage() {
         </Stack>
       ) : null}
 
-      <Card>
-        <CardContent sx={{ pb: 1 }}>
-          <Tabs
-            value={activeTab}
-            onChange={(_, value: FormTab) => setActiveTab(value)}
-            variant="scrollable"
-            scrollButtons="auto"
+      <Paper
+        variant="outlined"
+        sx={{
+          position: 'sticky',
+          top: `${SECTION_STICKY_TOP}px`,
+          zIndex: (theme) => theme.zIndex.appBar - 1,
+          px: 1.5,
+          py: 1,
+          display: 'flex',
+          gap: 1,
+          flexWrap: 'wrap',
+          borderColor: 'divider',
+          bgcolor: 'rgba(255,255,255,0.96)',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)'
+        }}
+      >
+        {FORM_SECTION_NAV.map((section) => (
+          <Button
+            key={section.key}
+            size="small"
+            variant={activeSection === section.key ? 'contained' : 'text'}
+            onClick={() => scrollToSection(section.key)}
           >
-            <Tab value="info" label="基础设置" />
-            <Tab value="sku" label="价格库存" />
-            <Tab value="delivery" label="物流设置" />
-            <Tab value="description" label="商品详情" />
-            <Tab value="other" label="其它设置" />
-          </Tabs>
-        </CardContent>
-      </Card>
+            {section.label}
+          </Button>
+        ))}
+      </Paper>
 
-      {activeTab === 'info' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.info = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>基础信息</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField disabled={readonly} fullWidth size="small" label="商品名称*" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -733,11 +785,12 @@ export function SpuFormPage() {
             </Grid>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'sku' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.sku = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>销售信息</Typography>
             <Stack spacing={2}>
               <Stack direction="row" spacing={3}>
                 <FormControlLabel
@@ -1041,11 +1094,12 @@ export function SpuFormPage() {
             </Stack>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'delivery' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.delivery = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>物流服务</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12 }}>
                 <Stack direction="row" spacing={2}>
@@ -1123,19 +1177,21 @@ export function SpuFormPage() {
             </Grid>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'description' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.description = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>图文描述</Typography>
             <TextField disabled={readonly} fullWidth size="small" multiline minRows={6} label="商品详情*" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'other' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.other = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>其它设置</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField disabled={readonly} fullWidth size="small" type="number" label="赠送积分" value={form.giveIntegral || 0} onChange={(e) => setForm({ ...form, giveIntegral: Number(e.target.value) })} />
@@ -1146,18 +1202,31 @@ export function SpuFormPage() {
             </Grid>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      <Stack direction="row" justifyContent="flex-end" spacing={1}>
-        {!readonly && (
-          <Button variant="contained" onClick={submit} disabled={loading}>
-            保存
+      <Paper
+        variant="outlined"
+        sx={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: (theme) => theme.zIndex.appBar - 1,
+          p: 1.5,
+          borderColor: 'divider',
+          bgcolor: 'rgba(255,255,255,0.96)',
+          backdropFilter: 'blur(8px)'
+        }}
+      >
+        <Stack direction="row" justifyContent="flex-end" spacing={1}>
+          {!readonly && (
+            <Button variant="contained" onClick={submit} disabled={loading}>
+              保存
+            </Button>
+          )}
+          <Button variant="outlined" onClick={() => navigate('/product/spu')}>
+            返回
           </Button>
-        )}
-        <Button variant="outlined" onClick={() => navigate('/product/spu')}>
-          返回
-        </Button>
-      </Stack>
+        </Stack>
+      </Paper>
 
     </Stack>
   );
