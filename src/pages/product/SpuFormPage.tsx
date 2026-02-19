@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
 import {
   Alert,
-  Autocomplete,
+  Avatar,
+  Box,
   Button,
   Card,
   CardContent,
@@ -12,22 +14,24 @@ import {
   Grid,
   MenuItem,
   Stack,
-  Tab,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
-  Tabs,
   TextField,
   Checkbox,
-  Typography
+  Typography,
+  Paper
 } from '@mui/material';
 import {
   createSpu,
   getCategoryPropertyList,
   getBrandSimpleList,
   getCategoryList,
+  getPresignedDownloadUrl,
+  getPresignedUploadUrl,
   getPropertyValueSimpleList,
   getSpuDetail,
   type BrandResp,
@@ -40,12 +44,15 @@ import {
   updateSpu
 } from '../../api/admin';
 
-const DEFAULT_STATUS_OPEN = 0;
 const DELIVERY_TYPE_EXPRESS = 1;
 const DELIVERY_TYPE_PICK_UP = 2;
 const DELIVERY_TYPE_SAME_CITY = 3;
 const PROPERTY_TYPE_DISPLAY = 0;
 const PROPERTY_TYPE_SALES = 1;
+const APP_BAR_HEIGHT = 64;
+const SECTION_STICKY_GAP = 8;
+const SECTION_STICKY_TOP = APP_BAR_HEIGHT + SECTION_STICKY_GAP;
+const SECTION_SCROLL_MARGIN_TOP = SECTION_STICKY_TOP + 56;
 
 type PropertyAndValues = {
   id: number;
@@ -53,7 +60,13 @@ type PropertyAndValues = {
   values: Array<{ id: number; name: string; picUrl?: string }>;
 };
 
-type SalesSelectionMap = Record<number, PropertyValueResp[]>;
+type SalesValueSlot = {
+  valueId: number | null;
+  valueName: string;
+  picUrl: string;
+};
+
+type SalesSlotMap = Record<number, SalesValueSlot[]>;
 
 const createDefaultSku = (): SkuResp => ({
   properties: [],
@@ -181,7 +194,15 @@ function mergeSkusByProperty(prevSkus: SkuResp[], propertyList: PropertyAndValue
   });
 }
 
-type FormTab = 'info' | 'sku' | 'delivery' | 'description' | 'other';
+type FormSection = 'info' | 'sku' | 'delivery' | 'description' | 'other';
+
+const FORM_SECTION_NAV: Array<{ key: FormSection; label: string }> = [
+  { key: 'info', label: '基础信息' },
+  { key: 'sku', label: '销售信息' },
+  { key: 'delivery', label: '物流服务' },
+  { key: 'description', label: '图文描述' },
+  { key: 'other', label: '其它设置' }
+];
 
 export function SpuFormPage() {
   const navigate = useNavigate();
@@ -197,27 +218,94 @@ export function SpuFormPage() {
   const [displayPropertyOptions, setDisplayPropertyOptions] = useState<CategoryPropertyResp[]>([]);
   const [propertyValueOptions, setPropertyValueOptions] = useState<Record<number, PropertyValueResp[]>>({});
   const [propertyList, setPropertyList] = useState<PropertyAndValues[]>([]);
-  const [salesSelections, setSalesSelections] = useState<SalesSelectionMap>({});
+  const [salesValueSlots, setSalesValueSlots] = useState<SalesSlotMap>({});
   const [batchSku, setBatchSku] = useState<SkuResp>(createDefaultSku());
 
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<FormTab>('info');
+  const [activeSection, setActiveSection] = useState<FormSection>('info');
   const [form, setForm] = useState<SpuSaveReq>(createDefaultForm());
   const [errorMessage, setErrorMessage] = useState('');
+  const [previewUrlMap, setPreviewUrlMap] = useState<Record<string, string>>({});
+  const [pendingSlotUploadTarget, setPendingSlotUploadTarget] = useState<{
+    propertyId: number;
+    slotIndex: number;
+  } | null>(null);
+  const [uploadingSlotKey, setUploadingSlotKey] = useState('');
+  const slotUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const sectionRefs = useRef<Record<FormSection, HTMLDivElement | null>>({
+    info: null,
+    sku: null,
+    delivery: null,
+    description: null,
+    other: null
+  });
 
   const pageTitle = useMemo(() => {
     if (!spuId) return '新增商品';
     return isDetail ? `商品详情 #${spuId}` : `编辑商品 #${spuId}`;
   }, [isDetail, spuId]);
 
-  function rebuildPropertyListFromSelections(nextSelections: SalesSelectionMap) {
+  const colorPropertyId = useMemo(() => {
+    const withImageProperty = salesPropertyOptions.find((item) => item.supportValueImage);
+    if (withImageProperty) {
+      return withImageProperty.propertyId;
+    }
+    const colorByName = propertyList.find((item) => item.name.includes('色'));
+    return colorByName?.id;
+  }, [salesPropertyOptions, propertyList]);
+
+  const orderedSkuRows = useMemo(() => {
+    const rows = form.skus.map((sku, sourceIndex) => ({ sku, sourceIndex }));
+    if (!form.specType || !colorPropertyId) {
+      return rows;
+    }
+    return rows.sort((left, right) => {
+      const leftColorValueId =
+        left.sku.properties?.find((item) => item.propertyId === colorPropertyId)?.valueId ??
+        Number.MAX_SAFE_INTEGER;
+      const rightColorValueId =
+        right.sku.properties?.find((item) => item.propertyId === colorPropertyId)?.valueId ??
+        Number.MAX_SAFE_INTEGER;
+      if (leftColorValueId !== rightColorValueId) {
+        return leftColorValueId - rightColorValueId;
+      }
+      return left.sourceIndex - right.sourceIndex;
+    });
+  }, [form.skus, form.specType, colorPropertyId]);
+
+  function scrollToSection(sectionKey: FormSection) {
+    sectionRefs.current[sectionKey]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActiveSection(sectionKey);
+  }
+
+  function rebuildPropertyListFromSlots(nextSlots: SalesSlotMap) {
     const nextPropertyList: PropertyAndValues[] = salesPropertyOptions
       .map((property) => {
-        const selectedValues = nextSelections[property.propertyId] ?? [];
+        const optionMap = new Map((propertyValueOptions[property.propertyId] ?? []).map((item) => [item.id, item]));
+        const selectedValues = nextSlots[property.propertyId] ?? [];
+        const valuesMap = new Map<number, { id: number; name: string; picUrl?: string }>();
+        selectedValues.forEach((slot) => {
+          if (!slot.valueId) {
+            return;
+          }
+          const option = optionMap.get(slot.valueId);
+          const valueName = slot.valueName || option?.name || '';
+          if (!valueName) {
+            return;
+          }
+          const valuePicUrl = property.supportValueImage
+            ? slot.picUrl || option?.picUrl || ''
+            : option?.picUrl || '';
+          valuesMap.set(slot.valueId, {
+            id: slot.valueId,
+            name: valueName,
+            picUrl: valuePicUrl
+          });
+        });
         return {
           id: property.propertyId,
           name: property.propertyName,
-          values: selectedValues.map((item) => ({ id: item.id, name: item.name, picUrl: item.picUrl }))
+          values: Array.from(valuesMap.values())
         };
       })
       .filter((item) => item.values.length > 0);
@@ -293,14 +381,12 @@ export function SpuFormPage() {
     });
     const propertyListFromDetail = buildPropertyListFromSkus(detailSkus);
     setPropertyList(propertyListFromDetail);
-    setSalesSelections(
-      propertyListFromDetail.reduce<SalesSelectionMap>((accumulator, item) => {
+    setSalesValueSlots(
+      propertyListFromDetail.reduce<SalesSlotMap>((accumulator, item) => {
         accumulator[item.id] = item.values.map((value) => ({
-          id: value.id,
-          propertyId: item.id,
-          name: value.name,
-          picUrl: value.picUrl,
-          status: DEFAULT_STATUS_OPEN
+          valueId: value.id,
+          valueName: value.name,
+          picUrl: value.picUrl || ''
         }));
         return accumulator;
       }, {})
@@ -325,19 +411,90 @@ export function SpuFormPage() {
 
   useEffect(() => {
     if (!salesPropertyOptions.length) {
-      setSalesSelections({});
+      setSalesValueSlots({});
       setPropertyList([]);
       return;
     }
-    setSalesSelections((prev) => {
-      const next = salesPropertyOptions.reduce<SalesSelectionMap>((accumulator, property) => {
+    setSalesValueSlots((prev) => {
+      const next = salesPropertyOptions.reduce<SalesSlotMap>((accumulator, property) => {
         accumulator[property.propertyId] = prev[property.propertyId] ?? [];
         return accumulator;
       }, {});
-      rebuildPropertyListFromSelections(next);
+      rebuildPropertyListFromSlots(next);
       return next;
     });
   }, [salesPropertyOptions]);
+
+  useEffect(() => {
+    if (!salesPropertyOptions.length) {
+      return;
+    }
+    rebuildPropertyListFromSlots(salesValueSlots);
+  }, [propertyValueOptions]);
+
+  useEffect(() => {
+    salesPropertyOptions.forEach((property) => {
+      if (!propertyValueOptions[property.propertyId]) {
+        void loadSalesPropertyValues(property.propertyId);
+      }
+    });
+  }, [salesPropertyOptions]);
+
+  useEffect(() => {
+    function syncActiveSectionByScroll() {
+      const offset = SECTION_SCROLL_MARGIN_TOP;
+      let current: FormSection = 'info';
+      FORM_SECTION_NAV.forEach((section) => {
+        const top = sectionRefs.current[section.key]?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+        if (top - offset <= 0) {
+          current = section.key;
+        }
+      });
+      setActiveSection(current);
+    }
+    window.addEventListener('scroll', syncActiveSectionByScroll, { passive: true });
+    syncActiveSectionByScroll();
+    return () => window.removeEventListener('scroll', syncActiveSectionByScroll);
+  }, []);
+
+  useEffect(() => {
+    const objectUrls = Array.from(
+      new Set(
+        Object.values(salesValueSlots)
+          .flatMap((slots) => slots.map((slot) => slot.picUrl?.trim() || ''))
+          .filter((item) => Boolean(item))
+      )
+    );
+    const pendingObjectUrls = objectUrls.filter((objectUrl) => !previewUrlMap[objectUrl]);
+    if (!pendingObjectUrls.length) {
+      return;
+    }
+    let active = true;
+    Promise.all(
+      pendingObjectUrls.map(async (objectUrl) => {
+        try {
+          const resp = await getPresignedDownloadUrl({ objectUrl });
+          return [objectUrl, resp.downloadUrl] as const;
+        } catch (_error) {
+          return [objectUrl, ''] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!active) {
+        return;
+      }
+      setPreviewUrlMap((prev) => {
+        const next = { ...prev };
+        entries.forEach(([objectUrl, previewUrl]) => {
+          next[objectUrl] = previewUrl;
+        });
+        return next;
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [salesValueSlots, previewUrlMap]);
 
   useEffect(() => {
     if (!form.specType) {
@@ -397,12 +554,113 @@ export function SpuFormPage() {
     }
   }
 
-  function patchSalesSelections(propertyId: number, selectedValues: PropertyValueResp[]) {
-    setSalesSelections((prev) => {
-      const nextSelections = { ...prev, [propertyId]: selectedValues };
-      rebuildPropertyListFromSelections(nextSelections);
-      return nextSelections;
+  function addSalesValueSlot(propertyId: number) {
+    setSalesValueSlots((prev) => {
+      const current = prev[propertyId] ?? [];
+      const next = {
+        ...prev,
+        [propertyId]: [...current, { valueId: null, valueName: '', picUrl: '' }]
+      };
+      rebuildPropertyListFromSlots(next);
+      return next;
     });
+  }
+
+  function removeSalesValueSlot(propertyId: number, slotIndex: number) {
+    setSalesValueSlots((prev) => {
+      const current = prev[propertyId] ?? [];
+      const next = {
+        ...prev,
+        [propertyId]: current.filter((_, index) => index !== slotIndex)
+      };
+      rebuildPropertyListFromSlots(next);
+      return next;
+    });
+  }
+
+  function patchSalesValueSlot(propertyId: number, slotIndex: number, patch: Partial<SalesValueSlot>) {
+    setSalesValueSlots((prev) => {
+      const current = prev[propertyId] ?? [];
+      if (!current[slotIndex]) {
+        return prev;
+      }
+      const nextSlots = current.map((item, index) => (index === slotIndex ? { ...item, ...patch } : item));
+      const next = { ...prev, [propertyId]: nextSlots };
+      rebuildPropertyListFromSlots(next);
+      return next;
+    });
+  }
+
+  function patchSalesValueBySlot(propertyId: number, slotIndex: number, valueId: number | null) {
+    setErrorMessage('');
+    setSalesValueSlots((prev) => {
+      const current = prev[propertyId] ?? [];
+      if (!current[slotIndex]) {
+        return prev;
+      }
+      if (!valueId) {
+        const nextSlots = current.map((item, index) =>
+          index === slotIndex ? { ...item, valueId: null, valueName: '' } : item
+        );
+        const next = { ...prev, [propertyId]: nextSlots };
+        rebuildPropertyListFromSlots(next);
+        return next;
+      }
+      if (current.some((item, index) => index !== slotIndex && item.valueId === valueId)) {
+        setErrorMessage('同一销售属性下不能重复选择同一个规格值');
+        return prev;
+      }
+      const option = (propertyValueOptions[propertyId] ?? []).find((item) => item.id === valueId);
+      const property = salesPropertyOptions.find((item) => item.propertyId === propertyId);
+      const nextSlots = current.map((item, index) =>
+        index === slotIndex
+          ? {
+              ...item,
+              valueId,
+              valueName: option?.name || item.valueName,
+              picUrl: property?.supportValueImage ? item.picUrl || option?.picUrl || '' : ''
+            }
+          : item
+      );
+      const next = { ...prev, [propertyId]: nextSlots };
+      rebuildPropertyListFromSlots(next);
+      return next;
+    });
+  }
+
+  function triggerSalesSlotImageUpload(propertyId: number, slotIndex: number) {
+    setPendingSlotUploadTarget({ propertyId, slotIndex });
+    slotUploadInputRef.current?.click();
+  }
+
+  async function handleSalesSlotImageSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !pendingSlotUploadTarget) {
+      return;
+    }
+    const { propertyId, slotIndex } = pendingSlotUploadTarget;
+    const slotKey = `${propertyId}-${slotIndex}`;
+    setUploadingSlotKey(slotKey);
+    setErrorMessage('');
+    try {
+      const sign = await getPresignedUploadUrl({
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        pathPrefix: 'product/spu/sales-property'
+      });
+      await axios.put(sign.uploadUrl, file, {
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream'
+        }
+      });
+      patchSalesValueSlot(propertyId, slotIndex, { picUrl: sign.objectUrl });
+    } catch (error) {
+      setErrorMessage(`图片上传失败：${(error as Error).message}`);
+    } finally {
+      setUploadingSlotKey('');
+      setPendingSlotUploadTarget(null);
+    }
   }
 
   function resolveSkuDisplayPicUrl(sku: SkuResp) {
@@ -411,6 +669,14 @@ export function SpuFormPage() {
     }
     const valuePicUrl = (sku.properties ?? []).map((item) => item.valuePicUrl).find((item) => Boolean(item?.trim()));
     return valuePicUrl || form.picUrl || '';
+  }
+
+  function resolvePreviewUrl(objectUrl?: string) {
+    const key = objectUrl?.trim();
+    if (!key) {
+      return '';
+    }
+    return previewUrlMap[key] || '';
   }
 
   function patchDisplayProperty(propertyId: number, propertyName: string, valueText: string, sort: number) {
@@ -440,19 +706,19 @@ export function SpuFormPage() {
     }
     if (!form.name || !form.keyword || !form.introduction || !form.description || !form.picUrl) {
       setErrorMessage('请完善基础设置');
-      setActiveTab('info');
+      setActiveSection('info');
       return;
     }
     if (!form.categoryId || !form.brandId) {
       setErrorMessage('请选择分类和品牌');
-      setActiveTab('info');
+      setActiveSection('info');
       return;
     }
     const requiredDisplayProperties = displayPropertyOptions.filter((item) => item.required);
     const displayValueMap = new Map((form.displayProperties ?? []).map((item) => [item.propertyId, item.valueText]));
     if (requiredDisplayProperties.some((item) => !displayValueMap.get(item.propertyId)?.trim())) {
       setErrorMessage('请填写类目必填展示属性');
-      setActiveTab('info');
+      setActiveSection('info');
       return;
     }
     if (form.specType) {
@@ -462,33 +728,33 @@ export function SpuFormPage() {
       );
       if (requiredSalesProperties.some((item) => !(selectedSalesValueMap.get(item.propertyId) ?? []).length)) {
         setErrorMessage('请先完成必填销售属性的值选择');
-        setActiveTab('sku');
+        setActiveSection('sku');
         return;
       }
       if (!propertyList.length) {
         setErrorMessage('多规格模式下请先选择销售属性值');
-        setActiveTab('sku');
+        setActiveSection('sku');
         return;
       }
     }
     if (!form.skus.length) {
       setErrorMessage('请至少配置一条 SKU');
-      setActiveTab('sku');
+      setActiveSection('sku');
       return;
     }
     if (!form.deliveryTypes.length) {
       setErrorMessage('请至少选择一种配送方式');
-      setActiveTab('delivery');
+      setActiveSection('delivery');
       return;
     }
     if (form.deliveryTypes.includes(DELIVERY_TYPE_EXPRESS) && !form.deliveryTemplateId) {
       setErrorMessage('选择快递配送时必须填写运费模板 ID');
-      setActiveTab('delivery');
+      setActiveSection('delivery');
       return;
     }
     if (form.specType && form.skus.some((item) => !item.properties || item.properties.length === 0)) {
       setErrorMessage('多规格模式下每个 SKU 必须包含属性组合');
-      setActiveTab('sku');
+      setActiveSection('sku');
       return;
     }
 
@@ -521,7 +787,7 @@ export function SpuFormPage() {
   }
 
   return (
-    <Stack spacing={2}>
+    <Stack spacing={2} sx={{ pb: 10, minWidth: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">{pageTitle}</Typography>
         <Button variant="outlined" onClick={() => navigate('/product/spu')}>
@@ -530,6 +796,13 @@ export function SpuFormPage() {
       </Stack>
 
       {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
+      <input
+        ref={slotUploadInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleSalesSlotImageSelect}
+      />
       {loading ? (
         <Stack direction="row" alignItems="center" spacing={1}>
           <CircularProgress size={20} />
@@ -539,26 +812,39 @@ export function SpuFormPage() {
         </Stack>
       ) : null}
 
-      <Card>
-        <CardContent sx={{ pb: 1 }}>
-          <Tabs
-            value={activeTab}
-            onChange={(_, value: FormTab) => setActiveTab(value)}
-            variant="scrollable"
-            scrollButtons="auto"
+      <Paper
+        variant="outlined"
+        sx={{
+          position: 'sticky',
+          top: `${SECTION_STICKY_TOP}px`,
+          zIndex: (theme) => theme.zIndex.appBar - 1,
+          px: 1.5,
+          py: 1,
+          display: 'flex',
+          gap: 1,
+          flexWrap: 'wrap',
+          borderColor: 'divider',
+          bgcolor: 'rgba(255,255,255,0.96)',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)'
+        }}
+      >
+        {FORM_SECTION_NAV.map((section) => (
+          <Button
+            key={section.key}
+            size="small"
+            variant={activeSection === section.key ? 'contained' : 'text'}
+            onClick={() => scrollToSection(section.key)}
           >
-            <Tab value="info" label="基础设置" />
-            <Tab value="sku" label="价格库存" />
-            <Tab value="delivery" label="物流设置" />
-            <Tab value="description" label="商品详情" />
-            <Tab value="other" label="其它设置" />
-          </Tabs>
-        </CardContent>
-      </Card>
+            {section.label}
+          </Button>
+        ))}
+      </Paper>
 
-      {activeTab === 'info' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.info = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>基础信息</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField disabled={readonly} fullWidth size="small" label="商品名称*" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -578,7 +864,7 @@ export function SpuFormPage() {
                       categoryId: nextCategoryId,
                       displayProperties: []
                     });
-                    setSalesSelections({});
+                    setSalesValueSlots({});
                     setPropertyList([]);
                   }}
                 >
@@ -627,11 +913,12 @@ export function SpuFormPage() {
             </Grid>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'sku' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.sku = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>销售信息</Typography>
             <Stack spacing={2}>
               <Stack direction="row" spacing={3}>
                 <FormControlLabel
@@ -669,33 +956,161 @@ export function SpuFormPage() {
                   {salesPropertyOptions.length === 0 ? (
                     <Alert severity="warning">当前分类未配置销售属性，请先到“类目属性绑定”配置。</Alert>
                   ) : (
-                    <Grid container spacing={1.5}>
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 1,
+                        bgcolor: '#f8f9fc',
+                        borderColor: '#e8ebf3'
+                      }}
+                    >
                       {salesPropertyOptions.map((property) => (
-                        <Grid key={property.propertyId} size={{ xs: 12, md: 6 }}>
-                          <Autocomplete
-                            multiple
-                            disableCloseOnSelect
-                            options={propertyValueOptions[property.propertyId] ?? []}
-                            value={salesSelections[property.propertyId] ?? []}
-                            getOptionLabel={(option) => option.name}
-                            isOptionEqualToValue={(option, value) => option.id === value.id}
-                            onOpen={() => {
-                              void loadSalesPropertyValues(property.propertyId);
-                            }}
-                            onChange={(_, values) => patchSalesSelections(property.propertyId, values)}
-                            readOnly={readonly}
-                            renderInput={(params) => (
-                              <TextField
-                                {...params}
-                                size="small"
-                                label={`${property.propertyName}${property.required ? ' *' : ''}`}
-                                helperText={property.required ? '必填销售属性' : '可选销售属性'}
-                              />
+                        <Box
+                          key={property.propertyId}
+                          sx={{
+                            py: 0.75,
+                            borderBottom: '1px solid #e8ebf3',
+                            '&:last-of-type': { borderBottom: 'none', pb: 0 }
+                          }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.75 }}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Typography variant="subtitle1" fontWeight={600} sx={{ fontSize: '1rem', lineHeight: 1.2 }}>
+                                {property.propertyName}
+                                <Typography component="span" color="text.secondary" sx={{ ml: 0.5 }}>
+                                  ({(salesValueSlots[property.propertyId] ?? []).length})
+                                </Typography>
+                                {property.required ? (
+                                  <Typography component="span" color="error.main" sx={{ ml: 0.5 }}>
+                                    *
+                                  </Typography>
+                                ) : null}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {property.required ? '必填销售属性' : '可选销售属性'}
+                              </Typography>
+                            </Stack>
+                            <Button variant="text" size="small" disabled sx={{ minWidth: 36, px: 0.5 }}>
+                              排序
+                            </Button>
+                          </Stack>
+
+                          <Grid container spacing={0.75}>
+                            {(salesValueSlots[property.propertyId] ?? []).map((slot, slotIndex) => (
+                              <Grid key={`${property.propertyId}-${slotIndex}`} size={{ xs: 12, md: 6 }}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                  {property.supportValueImage ? (
+                                    <Box
+                                      onClick={() => {
+                                        if (readonly) {
+                                          return;
+                                        }
+                                        triggerSalesSlotImageUpload(property.propertyId, slotIndex);
+                                      }}
+                                      sx={{
+                                        width: 38,
+                                        height: 38,
+                                        borderRadius: 1,
+                                        border: '1px dashed',
+                                        borderColor: 'divider',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        bgcolor: '#fff',
+                                        overflow: 'hidden',
+                                        flexShrink: 0,
+                                        cursor: readonly ? 'default' : 'pointer'
+                                      }}
+                                    >
+                                      {uploadingSlotKey === `${property.propertyId}-${slotIndex}` ? (
+                                        <CircularProgress size={16} />
+                                      ) : (
+                                        <Avatar
+                                          variant="rounded"
+                                          src={resolvePreviewUrl(slot.picUrl) || undefined}
+                                          sx={{ width: 30, height: 30 }}
+                                        >
+                                          图
+                                        </Avatar>
+                                      )}
+                                    </Box>
+                                  ) : null}
+                                  <TextField
+                                    size="small"
+                                    select
+                                    fullWidth
+                                    sx={{
+                                      '& .MuiOutlinedInput-root': {
+                                        borderRadius: 1,
+                                        minHeight: 38,
+                                        bgcolor: '#fff'
+                                      }
+                                    }}
+                                    label=""
+                                    placeholder={`${property.propertyName}${property.required ? '(必选)' : ''}`}
+                                    value={slot.valueId ?? ''}
+                                    disabled={readonly}
+                                    onChange={(e) => {
+                                      const nextValue = e.target.value;
+                                      patchSalesValueBySlot(
+                                        property.propertyId,
+                                        slotIndex,
+                                        nextValue === '' ? null : Number(nextValue)
+                                      );
+                                    }}
+                                  >
+                                    <MenuItem value="">请选择</MenuItem>
+                                    {(propertyValueOptions[property.propertyId] ?? []).map((option) => (
+                                      <MenuItem key={option.id} value={option.id}>
+                                        {option.name}
+                                      </MenuItem>
+                                    ))}
+                                    {slot.valueId &&
+                                      !(propertyValueOptions[property.propertyId] ?? []).some(
+                                        (option) => option.id === slot.valueId
+                                      ) && (
+                                        <MenuItem value={slot.valueId}>{slot.valueName || `#${slot.valueId}`}</MenuItem>
+                                      )}
+                                  </TextField>
+                                  {!readonly && (
+                                    <Button
+                                      color="error"
+                                      sx={{ minWidth: 32, px: 0.5 }}
+                                      onClick={() => removeSalesValueSlot(property.propertyId, slotIndex)}
+                                    >
+                                      删
+                                    </Button>
+                                  )}
+                                </Stack>
+                              </Grid>
+                            ))}
+
+                            {!readonly && (
+                              <Grid size={{ xs: 12, md: 6 }}>
+                                <Button
+                                  variant="outlined"
+                                  onClick={() => addSalesValueSlot(property.propertyId)}
+                                  sx={{
+                                    height: 38,
+                                    borderRadius: 1,
+                                    width: 38,
+                                    minWidth: 38
+                                  }}
+                                >
+                                  +
+                                </Button>
+                              </Grid>
                             )}
-                          />
-                        </Grid>
+                          </Grid>
+
+                          {(propertyValueOptions[property.propertyId] ?? []).length === 0 && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                              暂无可选规格值
+                            </Typography>
+                          )}
+                        </Box>
                       ))}
-                    </Grid>
+                    </Paper>
                   )}
                 </Stack>
               )}
@@ -724,33 +1139,52 @@ export function SpuFormPage() {
               {form.specType && propertyList.length === 0 ? (
                 <Alert severity="info">请先在上方选择销售属性值，再自动生成销售规格（SKU）。</Alert>
               ) : (
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>图片</TableCell>
-                      {form.specType &&
-                        propertyList.map((property) => <TableCell key={property.id}>{property.name}</TableCell>)}
-                      <TableCell>商品条码</TableCell>
-                      <TableCell>销售价</TableCell>
-                      <TableCell>市场价</TableCell>
-                      <TableCell>成本价</TableCell>
-                      <TableCell>库存</TableCell>
-                      <TableCell>重量(kg)</TableCell>
-                      <TableCell>体积(m³)</TableCell>
-                      {Boolean(form.subCommissionType) && <TableCell>一级返佣(元)</TableCell>}
-                      {Boolean(form.subCommissionType) && <TableCell>二级返佣(元)</TableCell>}
-                      {form.specType && !readonly && <TableCell>操作</TableCell>}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {form.skus.map((sku, index) => (
-                      <TableRow key={buildSkuKey(sku.properties) || index}>
+                <TableContainer sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
+                  <Table size="small" sx={{ minWidth: 1320, width: 'max-content' }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>图片</TableCell>
+                        {form.specType &&
+                          propertyList.map((property) => (
+                            <TableCell
+                              key={property.id}
+                              sx={property.id === colorPropertyId || property.name.includes('色') ? { minWidth: 180 } : undefined}
+                            >
+                              {property.name}
+                            </TableCell>
+                          ))}
+                        <TableCell>商品条码</TableCell>
+                        <TableCell>销售价</TableCell>
+                        <TableCell>市场价</TableCell>
+                        <TableCell>成本价</TableCell>
+                        <TableCell>库存</TableCell>
+                        <TableCell>重量(kg)</TableCell>
+                        <TableCell>体积(m³)</TableCell>
+                        {Boolean(form.subCommissionType) && <TableCell>一级返佣(元)</TableCell>}
+                        {Boolean(form.subCommissionType) && <TableCell>二级返佣(元)</TableCell>}
+                        {form.specType && !readonly && (
+                          <TableCell
+                            sx={{
+                              position: 'sticky',
+                              right: 0,
+                              zIndex: 4,
+                              bgcolor: '#f5f6fa'
+                            }}
+                          >
+                            操作
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {orderedSkuRows.map(({ sku, sourceIndex }) => (
+                        <TableRow key={buildSkuKey(sku.properties) || sourceIndex}>
                         <TableCell>
                           <TextField
                             size="small"
                             value={sku.picUrl || ''}
                             disabled={readonly}
-                            onChange={(e) => patchSku(index, 'picUrl', e.target.value)}
+                            onChange={(e) => patchSku(sourceIndex, 'picUrl', e.target.value)}
                             placeholder={readonly ? '' : '可选，留空时回退'}
                           />
                           <Typography variant="caption" color="text.secondary">
@@ -760,57 +1194,73 @@ export function SpuFormPage() {
                         {form.specType &&
                           propertyList.map((property) => {
                             const propertyValueName = sku.properties?.find((item) => item.propertyId === property.id)?.valueName || '';
-                            return <TableCell key={property.id}>{propertyValueName}</TableCell>;
+                            return (
+                              <TableCell
+                                key={property.id}
+                                sx={property.id === colorPropertyId || property.name.includes('色') ? { minWidth: 180 } : undefined}
+                              >
+                                {propertyValueName}
+                              </TableCell>
+                            );
                           })}
                         <TableCell>
-                          <TextField size="small" value={sku.barCode || ''} disabled={readonly} onChange={(e) => patchSku(index, 'barCode', e.target.value)} />
+                          <TextField size="small" value={sku.barCode || ''} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'barCode', e.target.value)} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.price} disabled={readonly} onChange={(e) => patchSku(index, 'price', Number(e.target.value))} />
+                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.price} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'price', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.marketPrice} disabled={readonly} onChange={(e) => patchSku(index, 'marketPrice', Number(e.target.value))} />
+                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.marketPrice} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'marketPrice', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.costPrice} disabled={readonly} onChange={(e) => patchSku(index, 'costPrice', Number(e.target.value))} />
+                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.costPrice} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'costPrice', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" value={sku.stock} disabled={readonly} onChange={(e) => patchSku(index, 'stock', Number(e.target.value))} />
+                          <TextField size="small" type="number" value={sku.stock} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'stock', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" value={sku.weight || 0} disabled={readonly} onChange={(e) => patchSku(index, 'weight', Number(e.target.value))} />
+                          <TextField size="small" type="number" value={sku.weight || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'weight', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" value={sku.volume || 0} disabled={readonly} onChange={(e) => patchSku(index, 'volume', Number(e.target.value))} />
+                          <TextField size="small" type="number" value={sku.volume || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'volume', Number(e.target.value))} />
                         </TableCell>
                         {Boolean(form.subCommissionType) && (
                           <TableCell>
-                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionFirstPrice || 0} disabled={readonly} onChange={(e) => patchSku(index, 'subCommissionFirstPrice', Number(e.target.value))} />
+                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionFirstPrice || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'subCommissionFirstPrice', Number(e.target.value))} />
                           </TableCell>
                         )}
                         {Boolean(form.subCommissionType) && (
                           <TableCell>
-                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionSecondPrice || 0} disabled={readonly} onChange={(e) => patchSku(index, 'subCommissionSecondPrice', Number(e.target.value))} />
+                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionSecondPrice || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'subCommissionSecondPrice', Number(e.target.value))} />
                           </TableCell>
                         )}
                         {form.specType && !readonly && (
-                          <TableCell>
-                            <Button size="small" color="error" onClick={() => deleteSku(index)}>删除</Button>
+                          <TableCell
+                            sx={{
+                              position: 'sticky',
+                              right: 0,
+                              zIndex: 3,
+                              bgcolor: 'background.paper'
+                            }}
+                          >
+                            <Button size="small" color="error" onClick={() => deleteSku(sourceIndex)}>删除</Button>
                           </TableCell>
                         )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               )}
             </Stack>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'delivery' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.delivery = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>物流服务</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12 }}>
                 <Stack direction="row" spacing={2}>
@@ -888,19 +1338,21 @@ export function SpuFormPage() {
             </Grid>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'description' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.description = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>图文描述</Typography>
             <TextField disabled={readonly} fullWidth size="small" multiline minRows={6} label="商品详情*" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      {activeTab === 'other' && (
+      <Box ref={(element: HTMLDivElement | null) => { sectionRefs.current.other = element; }} sx={{ scrollMarginTop: `${SECTION_SCROLL_MARGIN_TOP}px` }}>
         <Card>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.5 }}>其它设置</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField disabled={readonly} fullWidth size="small" type="number" label="赠送积分" value={form.giveIntegral || 0} onChange={(e) => setForm({ ...form, giveIntegral: Number(e.target.value) })} />
@@ -911,18 +1363,31 @@ export function SpuFormPage() {
             </Grid>
           </CardContent>
         </Card>
-      )}
+      </Box>
 
-      <Stack direction="row" justifyContent="flex-end" spacing={1}>
-        {!readonly && (
-          <Button variant="contained" onClick={submit} disabled={loading}>
-            保存
+      <Paper
+        variant="outlined"
+        sx={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: (theme) => theme.zIndex.appBar - 1,
+          p: 1.5,
+          borderColor: 'divider',
+          bgcolor: 'rgba(255,255,255,0.96)',
+          backdropFilter: 'blur(8px)'
+        }}
+      >
+        <Stack direction="row" justifyContent="flex-end" spacing={1}>
+          {!readonly && (
+            <Button variant="contained" onClick={submit} disabled={loading}>
+              保存
+            </Button>
+          )}
+          <Button variant="outlined" onClick={() => navigate('/product/spu')}>
+            返回
           </Button>
-        )}
-        <Button variant="outlined" onClick={() => navigate('/product/spu')}>
-          返回
-        </Button>
-      </Stack>
+        </Stack>
+      </Paper>
 
     </Stack>
   );
