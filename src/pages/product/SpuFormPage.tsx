@@ -234,6 +234,34 @@ export function SpuFormPage() {
     return isDetail ? `商品详情 #${spuId}` : `编辑商品 #${spuId}`;
   }, [isDetail, spuId]);
 
+  const colorPropertyId = useMemo(() => {
+    const withImageProperty = salesPropertyOptions.find((item) => item.supportValueImage);
+    if (withImageProperty) {
+      return withImageProperty.propertyId;
+    }
+    const colorByName = propertyList.find((item) => item.name.includes('色'));
+    return colorByName?.id;
+  }, [salesPropertyOptions, propertyList]);
+
+  const orderedSkuRows = useMemo(() => {
+    const rows = form.skus.map((sku, sourceIndex) => ({ sku, sourceIndex }));
+    if (!form.specType || !colorPropertyId) {
+      return rows;
+    }
+    return rows.sort((left, right) => {
+      const leftColorValueId =
+        left.sku.properties?.find((item) => item.propertyId === colorPropertyId)?.valueId ??
+        Number.MAX_SAFE_INTEGER;
+      const rightColorValueId =
+        right.sku.properties?.find((item) => item.propertyId === colorPropertyId)?.valueId ??
+        Number.MAX_SAFE_INTEGER;
+      if (leftColorValueId !== rightColorValueId) {
+        return leftColorValueId - rightColorValueId;
+      }
+      return left.sourceIndex - right.sourceIndex;
+    });
+  }, [form.skus, form.specType, colorPropertyId]);
+
   function scrollToSection(sectionKey: FormSection) {
     sectionRefs.current[sectionKey]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setActiveSection(sectionKey);
@@ -1031,14 +1059,14 @@ export function SpuFormPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {form.skus.map((sku, index) => (
-                      <TableRow key={buildSkuKey(sku.properties) || index}>
+                    {orderedSkuRows.map(({ sku, sourceIndex }) => (
+                      <TableRow key={buildSkuKey(sku.properties) || sourceIndex}>
                         <TableCell>
                           <TextField
                             size="small"
                             value={sku.picUrl || ''}
                             disabled={readonly}
-                            onChange={(e) => patchSku(index, 'picUrl', e.target.value)}
+                            onChange={(e) => patchSku(sourceIndex, 'picUrl', e.target.value)}
                             placeholder={readonly ? '' : '可选，留空时回退'}
                           />
                           <Typography variant="caption" color="text.secondary">
@@ -1051,39 +1079,39 @@ export function SpuFormPage() {
                             return <TableCell key={property.id}>{propertyValueName}</TableCell>;
                           })}
                         <TableCell>
-                          <TextField size="small" value={sku.barCode || ''} disabled={readonly} onChange={(e) => patchSku(index, 'barCode', e.target.value)} />
+                          <TextField size="small" value={sku.barCode || ''} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'barCode', e.target.value)} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.price} disabled={readonly} onChange={(e) => patchSku(index, 'price', Number(e.target.value))} />
+                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.price} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'price', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.marketPrice} disabled={readonly} onChange={(e) => patchSku(index, 'marketPrice', Number(e.target.value))} />
+                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.marketPrice} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'marketPrice', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.costPrice} disabled={readonly} onChange={(e) => patchSku(index, 'costPrice', Number(e.target.value))} />
+                          <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.costPrice} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'costPrice', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" value={sku.stock} disabled={readonly} onChange={(e) => patchSku(index, 'stock', Number(e.target.value))} />
+                          <TextField size="small" type="number" value={sku.stock} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'stock', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" value={sku.weight || 0} disabled={readonly} onChange={(e) => patchSku(index, 'weight', Number(e.target.value))} />
+                          <TextField size="small" type="number" value={sku.weight || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'weight', Number(e.target.value))} />
                         </TableCell>
                         <TableCell>
-                          <TextField size="small" type="number" value={sku.volume || 0} disabled={readonly} onChange={(e) => patchSku(index, 'volume', Number(e.target.value))} />
+                          <TextField size="small" type="number" value={sku.volume || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'volume', Number(e.target.value))} />
                         </TableCell>
                         {Boolean(form.subCommissionType) && (
                           <TableCell>
-                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionFirstPrice || 0} disabled={readonly} onChange={(e) => patchSku(index, 'subCommissionFirstPrice', Number(e.target.value))} />
+                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionFirstPrice || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'subCommissionFirstPrice', Number(e.target.value))} />
                           </TableCell>
                         )}
                         {Boolean(form.subCommissionType) && (
                           <TableCell>
-                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionSecondPrice || 0} disabled={readonly} onChange={(e) => patchSku(index, 'subCommissionSecondPrice', Number(e.target.value))} />
+                            <TextField size="small" type="number" inputProps={{ step: 0.01 }} value={sku.subCommissionSecondPrice || 0} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'subCommissionSecondPrice', Number(e.target.value))} />
                           </TableCell>
                         )}
                         {form.specType && !readonly && (
                           <TableCell>
-                            <Button size="small" color="error" onClick={() => deleteSku(index)}>删除</Button>
+                            <Button size="small" color="error" onClick={() => deleteSku(sourceIndex)}>删除</Button>
                           </TableCell>
                         )}
                       </TableRow>
