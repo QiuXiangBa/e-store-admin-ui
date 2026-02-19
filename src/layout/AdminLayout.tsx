@@ -176,6 +176,8 @@ export function AdminLayout() {
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: 0,
+          overflowX: 'hidden',
           p: 3,
           mt: 8,
           transition: 'margin-left 200ms ease'

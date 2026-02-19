@@ -17,6 +17,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -786,7 +787,7 @@ export function SpuFormPage() {
   }
 
   return (
-    <Stack spacing={2} sx={{ pb: 10 }}>
+    <Stack spacing={2} sx={{ pb: 10, minWidth: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h4">{pageTitle}</Typography>
         <Button variant="outlined" onClick={() => navigate('/product/spu')}>
@@ -1138,27 +1139,46 @@ export function SpuFormPage() {
               {form.specType && propertyList.length === 0 ? (
                 <Alert severity="info">请先在上方选择销售属性值，再自动生成销售规格（SKU）。</Alert>
               ) : (
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>图片</TableCell>
-                      {form.specType &&
-                        propertyList.map((property) => <TableCell key={property.id}>{property.name}</TableCell>)}
-                      <TableCell>商品条码</TableCell>
-                      <TableCell>销售价</TableCell>
-                      <TableCell>市场价</TableCell>
-                      <TableCell>成本价</TableCell>
-                      <TableCell>库存</TableCell>
-                      <TableCell>重量(kg)</TableCell>
-                      <TableCell>体积(m³)</TableCell>
-                      {Boolean(form.subCommissionType) && <TableCell>一级返佣(元)</TableCell>}
-                      {Boolean(form.subCommissionType) && <TableCell>二级返佣(元)</TableCell>}
-                      {form.specType && !readonly && <TableCell>操作</TableCell>}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {orderedSkuRows.map(({ sku, sourceIndex }) => (
-                      <TableRow key={buildSkuKey(sku.properties) || sourceIndex}>
+                <TableContainer sx={{ width: '100%', maxWidth: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
+                  <Table size="small" sx={{ minWidth: 1320, width: 'max-content' }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>图片</TableCell>
+                        {form.specType &&
+                          propertyList.map((property) => (
+                            <TableCell
+                              key={property.id}
+                              sx={property.id === colorPropertyId || property.name.includes('色') ? { minWidth: 180 } : undefined}
+                            >
+                              {property.name}
+                            </TableCell>
+                          ))}
+                        <TableCell>商品条码</TableCell>
+                        <TableCell>销售价</TableCell>
+                        <TableCell>市场价</TableCell>
+                        <TableCell>成本价</TableCell>
+                        <TableCell>库存</TableCell>
+                        <TableCell>重量(kg)</TableCell>
+                        <TableCell>体积(m³)</TableCell>
+                        {Boolean(form.subCommissionType) && <TableCell>一级返佣(元)</TableCell>}
+                        {Boolean(form.subCommissionType) && <TableCell>二级返佣(元)</TableCell>}
+                        {form.specType && !readonly && (
+                          <TableCell
+                            sx={{
+                              position: 'sticky',
+                              right: 0,
+                              zIndex: 4,
+                              bgcolor: '#f5f6fa'
+                            }}
+                          >
+                            操作
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {orderedSkuRows.map(({ sku, sourceIndex }) => (
+                        <TableRow key={buildSkuKey(sku.properties) || sourceIndex}>
                         <TableCell>
                           <TextField
                             size="small"
@@ -1174,7 +1194,14 @@ export function SpuFormPage() {
                         {form.specType &&
                           propertyList.map((property) => {
                             const propertyValueName = sku.properties?.find((item) => item.propertyId === property.id)?.valueName || '';
-                            return <TableCell key={property.id}>{propertyValueName}</TableCell>;
+                            return (
+                              <TableCell
+                                key={property.id}
+                                sx={property.id === colorPropertyId || property.name.includes('色') ? { minWidth: 180 } : undefined}
+                              >
+                                {propertyValueName}
+                              </TableCell>
+                            );
                           })}
                         <TableCell>
                           <TextField size="small" value={sku.barCode || ''} disabled={readonly} onChange={(e) => patchSku(sourceIndex, 'barCode', e.target.value)} />
@@ -1208,14 +1235,22 @@ export function SpuFormPage() {
                           </TableCell>
                         )}
                         {form.specType && !readonly && (
-                          <TableCell>
+                          <TableCell
+                            sx={{
+                              position: 'sticky',
+                              right: 0,
+                              zIndex: 3,
+                              bgcolor: 'background.paper'
+                            }}
+                          >
                             <Button size="small" color="error" onClick={() => deleteSku(sourceIndex)}>删除</Button>
                           </TableCell>
                         )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               )}
             </Stack>
           </CardContent>
