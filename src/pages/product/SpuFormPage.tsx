@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
 import {
   Alert,
   Avatar,
@@ -28,6 +29,8 @@ import {
   getCategoryPropertyList,
   getBrandSimpleList,
   getCategoryList,
+  getPresignedDownloadUrl,
+  getPresignedUploadUrl,
   getPropertyValueSimpleList,
   getSpuDetail,
   type BrandResp,
@@ -221,6 +224,13 @@ export function SpuFormPage() {
   const [activeSection, setActiveSection] = useState<FormSection>('info');
   const [form, setForm] = useState<SpuSaveReq>(createDefaultForm());
   const [errorMessage, setErrorMessage] = useState('');
+  const [previewUrlMap, setPreviewUrlMap] = useState<Record<string, string>>({});
+  const [pendingSlotUploadTarget, setPendingSlotUploadTarget] = useState<{
+    propertyId: number;
+    slotIndex: number;
+  } | null>(null);
+  const [uploadingSlotKey, setUploadingSlotKey] = useState('');
+  const slotUploadInputRef = useRef<HTMLInputElement | null>(null);
   const sectionRefs = useRef<Record<FormSection, HTMLDivElement | null>>({
     info: null,
     sku: null,
@@ -447,6 +457,45 @@ export function SpuFormPage() {
   }, []);
 
   useEffect(() => {
+    const objectUrls = Array.from(
+      new Set(
+        Object.values(salesValueSlots)
+          .flatMap((slots) => slots.map((slot) => slot.picUrl?.trim() || ''))
+          .filter((item) => Boolean(item))
+      )
+    );
+    const pendingObjectUrls = objectUrls.filter((objectUrl) => !previewUrlMap[objectUrl]);
+    if (!pendingObjectUrls.length) {
+      return;
+    }
+    let active = true;
+    Promise.all(
+      pendingObjectUrls.map(async (objectUrl) => {
+        try {
+          const resp = await getPresignedDownloadUrl({ objectUrl });
+          return [objectUrl, resp.downloadUrl] as const;
+        } catch (_error) {
+          return [objectUrl, ''] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!active) {
+        return;
+      }
+      setPreviewUrlMap((prev) => {
+        const next = { ...prev };
+        entries.forEach(([objectUrl, previewUrl]) => {
+          next[objectUrl] = previewUrl;
+        });
+        return next;
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [salesValueSlots, previewUrlMap]);
+
+  useEffect(() => {
     if (!form.specType) {
       if (form.skus.length !== 1) {
         setForm((prev) => ({ ...prev, skus: [prev.skus[0] ?? createDefaultSku()] }));
@@ -578,12 +627,55 @@ export function SpuFormPage() {
     });
   }
 
+  function triggerSalesSlotImageUpload(propertyId: number, slotIndex: number) {
+    setPendingSlotUploadTarget({ propertyId, slotIndex });
+    slotUploadInputRef.current?.click();
+  }
+
+  async function handleSalesSlotImageSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !pendingSlotUploadTarget) {
+      return;
+    }
+    const { propertyId, slotIndex } = pendingSlotUploadTarget;
+    const slotKey = `${propertyId}-${slotIndex}`;
+    setUploadingSlotKey(slotKey);
+    setErrorMessage('');
+    try {
+      const sign = await getPresignedUploadUrl({
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        pathPrefix: 'product/spu/sales-property'
+      });
+      await axios.put(sign.uploadUrl, file, {
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream'
+        }
+      });
+      patchSalesValueSlot(propertyId, slotIndex, { picUrl: sign.objectUrl });
+    } catch (error) {
+      setErrorMessage(`图片上传失败：${(error as Error).message}`);
+    } finally {
+      setUploadingSlotKey('');
+      setPendingSlotUploadTarget(null);
+    }
+  }
+
   function resolveSkuDisplayPicUrl(sku: SkuResp) {
     if (sku.picUrl?.trim()) {
       return sku.picUrl;
     }
     const valuePicUrl = (sku.properties ?? []).map((item) => item.valuePicUrl).find((item) => Boolean(item?.trim()));
     return valuePicUrl || form.picUrl || '';
+  }
+
+  function resolvePreviewUrl(objectUrl?: string) {
+    const key = objectUrl?.trim();
+    if (!key) {
+      return '';
+    }
+    return previewUrlMap[key] || '';
   }
 
   function patchDisplayProperty(propertyId: number, propertyName: string, valueText: string, sort: number) {
@@ -703,6 +795,13 @@ export function SpuFormPage() {
       </Stack>
 
       {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
+      <input
+        ref={slotUploadInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleSalesSlotImageSelect}
+      />
       {loading ? (
         <Stack direction="row" alignItems="center" spacing={1}>
           <CircularProgress size={20} />
@@ -905,12 +1004,7 @@ export function SpuFormPage() {
                                         if (readonly) {
                                           return;
                                         }
-                                        const currentUrl = slot.picUrl || '';
-                                        const nextUrl = window.prompt('请输入规格图 URL', currentUrl);
-                                        if (nextUrl === null) {
-                                          return;
-                                        }
-                                        patchSalesValueSlot(property.propertyId, slotIndex, { picUrl: nextUrl.trim() });
+                                        triggerSalesSlotImageUpload(property.propertyId, slotIndex);
                                       }}
                                       sx={{
                                         width: 38,
@@ -927,13 +1021,17 @@ export function SpuFormPage() {
                                         cursor: readonly ? 'default' : 'pointer'
                                       }}
                                     >
-                                      <Avatar
-                                        variant="rounded"
-                                        src={slot.picUrl || undefined}
-                                        sx={{ width: 30, height: 30 }}
-                                      >
-                                        图
-                                      </Avatar>
+                                      {uploadingSlotKey === `${property.propertyId}-${slotIndex}` ? (
+                                        <CircularProgress size={16} />
+                                      ) : (
+                                        <Avatar
+                                          variant="rounded"
+                                          src={resolvePreviewUrl(slot.picUrl) || undefined}
+                                          sx={{ width: 30, height: 30 }}
+                                        >
+                                          图
+                                        </Avatar>
+                                      )}
                                     </Box>
                                   ) : null}
                                   <TextField
