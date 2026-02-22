@@ -4,6 +4,8 @@ export const PRODUCT_SPU_STATUS = {
   DISABLE: 0
 } as const;
 
+export type ProductSpuStatus = (typeof PRODUCT_SPU_STATUS)[keyof typeof PRODUCT_SPU_STATUS];
+
 export const PRODUCT_SPU_TAB = {
   FOR_SALE: 0,
   IN_WAREHOUSE: 1,
@@ -11,6 +13,8 @@ export const PRODUCT_SPU_TAB = {
   ALERT_STOCK: 3,
   RECYCLE_BIN: 4
 } as const;
+
+export type ProductSpuTab = (typeof PRODUCT_SPU_TAB)[keyof typeof PRODUCT_SPU_TAB];
 
 export function getProductSpuStatusLabel(status: number): string {
   if (status === PRODUCT_SPU_STATUS.ENABLE) {
@@ -20,8 +24,4 @@ export function getProductSpuStatusLabel(status: number): string {
     return '下架';
   }
   return '回收站';
-}
-
-export function fenToYuan(price?: number): string {
-  return ((price ?? 0) / 100).toFixed(2);
 }
