@@ -15,6 +15,7 @@ const routes = [
       { path: 'product/property-values', component: () => import('../views/product/PropertyValuePage.vue') },
       { path: 'product/spu', component: () => import('../views/product/SpuPage.vue') },
       { path: 'product/spu/create', component: () => import('../views/product/SpuFormPage.vue') },
+      { path: 'product/spu/:id', component: () => import('../views/product/SpuFormPage.vue') },
       { path: 'product/spu/:id/edit', component: () => import('../views/product/SpuFormPage.vue') },
       { path: 'product/comment', component: () => import('../views/product/CommentPage.vue') }
     ]
