@@ -28,16 +28,16 @@
 
     <el-card shadow="never" style="margin-bottom: 12px">
       <el-space wrap>
-        <el-select
+        <el-cascader
           v-model="categoryId"
-          filterable
+          :options="categoryCascaderOptions"
+          :props="categoryCascaderProps"
           clearable
+          filterable
           placeholder="请选择商品分类"
           style="width: 320px"
           @change="onCategoryChange"
-        >
-          <el-option v-for="item in categories" :key="item.id" :label="`${item.name}（ID:${item.id}）`" :value="item.id" />
-        </el-select>
+        />
         <el-tag type="primary">已绑定 {{ selectedCount }} 个属性</el-tag>
         <el-tag>{{ activeType === PROPERTY_TYPE_SALES ? '当前：销售属性' : '当前：展示属性' }}</el-tag>
       </el-space>
@@ -156,6 +156,14 @@ interface BindingRow {
   sort: number;
 }
 
+interface CategoryCascaderOption {
+  id: number;
+  parentId: number;
+  name: string;
+  isLeaf?: boolean;
+  children?: CategoryCascaderOption[];
+}
+
 const categories = ref<CategoryResp[]>([]);
 const categoryId = ref<number | undefined>();
 const activeType = ref<PropertyType>(PROPERTY_TYPE_SALES);
@@ -175,6 +183,54 @@ const selectedCount = computed(() => {
   const salesCount = rowsByType.value[PROPERTY_TYPE_SALES].filter((item) => item.selected).length;
   return displayCount + salesCount;
 });
+
+const categoryCascaderProps = {
+  value: 'id',
+  label: 'name',
+  children: 'children',
+  emitPath: false,
+  checkStrictly: false
+};
+
+const categoryCascaderOptions = computed<CategoryCascaderOption[]>(() => {
+  const nodeMap = new Map<number, CategoryCascaderOption>();
+  categories.value.forEach((item) => {
+    nodeMap.set(item.id, {
+      id: item.id,
+      parentId: item.parentId,
+      name: `${item.name}（ID:${item.id}）`,
+      isLeaf: item.isLeaf,
+      children: []
+    });
+  });
+
+  const roots: CategoryCascaderOption[] = [];
+  nodeMap.forEach((node) => {
+    const parent = nodeMap.get(node.parentId);
+    if (parent) {
+      parent.children = [...(parent.children ?? []), node];
+      return;
+    }
+    roots.push(node);
+  });
+
+  const markNode = (node: CategoryCascaderOption): CategoryCascaderOption => {
+    const childList = (node.children ?? []).map(markNode);
+    return {
+      ...node,
+      children: childList
+    };
+  };
+
+  return roots.map(markNode);
+});
+
+function isLeafCategory(category: CategoryResp) {
+  if (typeof category.isLeaf === 'boolean') {
+    return category.isLeaf;
+  }
+  return !categories.value.some((item) => item.parentId === category.id);
+}
 
 function mergeBindingRows(
   allProperties: PropertyResp[],
@@ -321,8 +377,31 @@ async function loadBindingRows(targetCategoryId: number) {
   }
 }
 
-async function onCategoryChange() {
+function normalizeCascaderValue(value: number | string | Array<number | string> | undefined) {
+  if (Array.isArray(value)) {
+    const tail = value[value.length - 1];
+    return Number(tail || 0);
+  }
+  if (typeof value === 'string' && value.includes(',')) {
+    const segments = value.split(',').map((item) => item.trim()).filter(Boolean);
+    return Number(segments[segments.length - 1] || 0);
+  }
+  return Number(value || 0);
+}
+
+async function onCategoryChange(value?: number | string | Array<number | string>) {
+  const normalizedId = normalizeCascaderValue(value);
+  categoryId.value = normalizedId || undefined;
   if (!categoryId.value) {
+    rowsByType.value = {
+      [PROPERTY_TYPE_DISPLAY]: [],
+      [PROPERTY_TYPE_SALES]: []
+    };
+    return;
+  }
+  const selectedCategory = categories.value.find((item) => item.id === categoryId.value);
+  if (!selectedCategory || !isLeafCategory(selectedCategory)) {
+    errorMessage.value = '请选择叶子类目进行属性绑定';
     rowsByType.value = {
       [PROPERTY_TYPE_DISPLAY]: [],
       [PROPERTY_TYPE_SALES]: []
@@ -335,6 +414,11 @@ async function onCategoryChange() {
 async function onSave() {
   if (!categoryId.value) {
     errorMessage.value = '请先选择商品分类';
+    return;
+  }
+  const selectedCategory = categories.value.find((item) => item.id === categoryId.value);
+  if (!selectedCategory || !isLeafCategory(selectedCategory)) {
+    errorMessage.value = '仅叶子类目支持属性绑定';
     return;
   }
 

@@ -27,239 +27,299 @@
       <div ref="infoRef" class="section-block">
         <h3>基础信息</h3>
         <el-form label-width="120px">
-          <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="商品名称" required><el-input v-model="form.name" :disabled="readonly" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="分类" required>
-              <el-select v-model="form.categoryId" :disabled="readonly" style="width: 100%" @change="onCategoryChange">
-                <el-option :value="0" label="请选择分类" />
-                <el-option v-for="item in categories" :key="item.id" :label="item.name" :value="item.id" />
-              </el-select>
-            </el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="品牌" required>
-              <el-select v-model="form.brandId" :disabled="readonly" style="width: 100%">
+          <div class="base-info-grid">
+            <div class="base-info-label required">1:1主图</div>
+            <div class="base-info-content">
+              <div class="base-info-tip-row">
+                <span class="base-info-tip-highlight">已设置商品详情页优先展示1:1主图</span>
+                <span>图片要求：比例为1:1，推荐尺寸1440x1440及以上；至多可上传5张</span>
+              </div>
+              <div class="main-image-grid">
+                <div
+                  v-for="index in MAIN_IMAGE_MAX_SIZE"
+                  :key="`main-image-slot-${index}`"
+                  class="main-image-slot"
+                  @click="!readonly && triggerCoverUpload()"
+                >
+                  <template v-if="(form.sliderPicUrls || [])[index - 1]">
+                    <el-image
+                      :src="resolvePreviewUrl((form.sliderPicUrls || [])[index - 1])"
+                      fit="cover"
+                      class="main-image-thumb"
+                    />
+                    <el-button
+                      v-if="!readonly"
+                      class="main-image-remove"
+                      circle
+                      size="small"
+                      @click.stop="removeMainImage(index - 1)"
+                    >×</el-button>
+                  </template>
+                  <template v-else>
+                    <div class="main-image-placeholder-icon">图</div>
+                    <div class="main-image-placeholder-text">上传图片</div>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <div class="base-info-label required">宝贝标题</div>
+            <div class="base-info-content">
+              <el-input
+                v-model="form.name"
+                :disabled="readonly"
+                maxlength="60"
+                show-word-limit
+                placeholder="请输入宝贝标题"
+              />
+            </div>
+
+            <div class="base-info-label required">分类</div>
+            <div class="base-info-content">
+              <el-cascader
+                v-model="form.categoryId"
+                :disabled="readonly"
+                :options="categoryCascaderOptions"
+                :props="categoryCascaderProps"
+                clearable
+                filterable
+                style="width: 100%"
+                placeholder="请选择分类"
+                @change="onCategoryChange"
+              />
+            </div>
+
+            <div class="base-info-label required">品牌</div>
+            <div class="base-info-content">
+              <el-select v-model="form.brandId" :disabled="readonly" filterable style="width: 100%">
                 <el-option :value="0" label="请选择品牌" />
                 <el-option v-for="item in brands" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
-            </el-form-item></el-col>
-          </el-row>
-          <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="关键字" required><el-input v-model="form.keyword" :disabled="readonly" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="封面图 URL" required><el-input v-model="form.picUrl" :disabled="readonly" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="排序"><el-input-number v-model="form.sort" :disabled="readonly" :min="0" style="width: 100%" /></el-form-item></el-col>
-          </el-row>
-          <el-form-item label="商品简介" required><el-input v-model="form.introduction" :disabled="readonly" type="textarea" :rows="2" /></el-form-item>
+            </div>
 
-          <el-divider content-position="left">展示属性</el-divider>
-          <el-row :gutter="12">
-            <el-col v-for="item in displayPropertyOptions" :key="item.propertyId" :span="8">
-              <el-form-item :label="`${item.propertyName}${item.required ? '*' : ''}`">
+            <div class="base-info-label required">关键字</div>
+            <div class="base-info-content">
+              <el-input v-model="form.keyword" :disabled="readonly" />
+            </div>
+
+            <div class="base-info-label">排序</div>
+            <div class="base-info-content">
+              <el-input-number v-model="form.sort" :disabled="readonly" :min="0" style="width: 240px" />
+            </div>
+
+            <div class="base-info-label required">商品简介</div>
+            <div class="base-info-content">
+              <el-input v-model="form.introduction" :disabled="readonly" type="textarea" :rows="2" />
+            </div>
+
+            <template v-for="item in displayPropertyOptions" :key="item.propertyId">
+              <div :class="['base-info-label', item.required ? 'required' : '']">
+                {{ item.propertyName }}
+              </div>
+              <div class="base-info-content">
                 <el-input
                   :model-value="getDisplayPropertyValue(item.propertyId)"
                   :disabled="readonly"
                   @input="(value: string | number) => patchDisplayProperty(item.propertyId, item.propertyName, String(value), item.sort)"
                 />
-              </el-form-item>
-            </el-col>
-          </el-row>
+              </div>
+            </template>
+          </div>
         </el-form>
       </div>
 
       <div ref="skuRef" class="section-block">
         <h3>销售信息</h3>
-
-        <div class="spec-switch-row">
-          <el-checkbox v-model="form.subCommissionType" :disabled="readonly">分销类型：单独设置</el-checkbox>
-          <el-checkbox v-model="form.specType" :disabled="readonly" @change="onSpecTypeChange">商品规格：多规格</el-checkbox>
-        </div>
-
-        <template v-if="form.specType">
-          <div class="sales-header-row">
-            <span>销售属性</span>
-            <el-tag type="info">先选属性值，再生成销售规格</el-tag>
-          </div>
-
-          <el-alert v-if="salesPropertyOptions.length === 0" type="warning" :closable="false" show-icon title="当前分类未配置销售属性，请先到类目属性绑定配置" />
-
-          <div v-else class="sales-property-panel">
-            <div v-for="property in salesPropertyOptions" :key="property.propertyId" class="sales-property-block">
-              <div class="sales-property-title">
-                <span>{{ property.propertyName }}（{{ (salesValueSlots[property.propertyId] || []).length }}）</span>
-                <span class="sales-property-tags">
-                  <span v-if="property.required" class="required">*</span>
-                  <el-tag size="small" type="warning" v-if="property.required">必填</el-tag>
-                </span>
+          <div class="sales-two-section">
+            <div class="sales-item">
+              <div class="sales-item-label">
+                <span>销售属性</span>
+                <span class="help-badge">?</span>
               </div>
+              <div class="sales-item-content">
+                <el-alert v-if="salesPropertyOptions.length === 0" type="warning" :closable="false" show-icon title="当前分类未配置销售属性，请先到类目属性绑定配置" />
 
-              <div class="sales-value-grid">
-                <div
-                  v-for="(slot, slotIndex) in salesValueSlots[property.propertyId] || []"
-                  :key="`${property.propertyId}-${slotIndex}`"
-                  class="sales-value-item"
-                >
-                  <button
-                    v-if="property.supportValueImage"
-                    class="slot-img-btn"
-                    :disabled="readonly"
-                    @click="triggerSalesSlotImageUpload(property.propertyId, slotIndex)"
-                    type="button"
-                  >
-                    <el-image
-                      v-if="resolvePreviewUrl(slot.picUrl)"
-                      :src="resolvePreviewUrl(slot.picUrl)"
-                      fit="cover"
-                      style="width: 32px; height: 32px; border-radius: 6px"
-                    />
-                    <span v-else>图</span>
-                  </button>
+                <div v-else class="sales-property-panel">
+                  <div v-for="property in salesPropertyOptions" :key="property.propertyId" class="sales-property-block">
+                    <div class="sales-property-title">
+                      <span>{{ property.propertyName }}（{{ (salesValueSlots[property.propertyId] || []).length }}）</span>
+                      <span class="sales-property-tags">
+                        <span v-if="property.required" class="required">*</span>
+                        <el-tag size="small" type="warning" v-if="property.required">必填</el-tag>
+                      </span>
+                    </div>
 
-                  <el-select
-                    :model-value="slot.valueId"
-                    :disabled="readonly"
-                    clearable
-                    placeholder="请选择"
-                    class="slot-select"
-                    @change="(value: string | number | boolean) => patchSalesValueBySlot(property.propertyId, slotIndex, value ? Number(value) : null)"
-                  >
-                    <el-option
-                      v-for="option in propertyValueOptions[property.propertyId] || []"
-                      :key="option.id"
-                      :label="option.name"
-                      :value="option.id"
-                    />
-                  </el-select>
+                    <div class="sales-value-grid">
+                      <div
+                        v-for="(slot, slotIndex) in salesValueSlots[property.propertyId] || []"
+                        :key="`${property.propertyId}-${slotIndex}`"
+                        class="sales-value-item"
+                      >
+                        <button
+                          v-if="property.supportValueImage"
+                          class="slot-img-btn"
+                          :disabled="readonly"
+                          @click="triggerSalesSlotImageUpload(property.propertyId, slotIndex)"
+                          type="button"
+                        >
+                          <el-image
+                            v-if="resolvePreviewUrl(slot.picUrl)"
+                            :src="resolvePreviewUrl(slot.picUrl)"
+                            fit="cover"
+                            style="width: 32px; height: 32px; border-radius: 6px"
+                          />
+                          <span v-else>图</span>
+                        </button>
 
-                  <el-button
-                    v-if="!readonly"
-                    class="slot-remove"
-                    link
-                    type="danger"
-                    @click="removeSalesValueSlot(property.propertyId, slotIndex)"
-                  >删除</el-button>
+                        <el-select
+                          :model-value="slot.valueId"
+                          :disabled="readonly"
+                          clearable
+                          placeholder="请选择"
+                          class="slot-select"
+                          @change="(value: string | number | boolean) => patchSalesValueBySlot(property.propertyId, slotIndex, value ? Number(value) : null)"
+                        >
+                          <el-option
+                            v-for="option in propertyValueOptions[property.propertyId] || []"
+                            :key="option.id"
+                            :label="option.name"
+                            :value="option.id"
+                          />
+                        </el-select>
+
+                        <el-button
+                          v-if="!readonly"
+                          class="slot-remove"
+                          link
+                          type="danger"
+                          @click="removeSalesValueSlot(property.propertyId, slotIndex)"
+                        >删除</el-button>
+                      </div>
+
+                      <div v-if="!readonly" class="sales-value-item">
+                        <el-button class="slot-plus" @click="addSalesValueSlot(property.propertyId)">+</el-button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sales-item">
+              <div class="sales-item-label">
+                <span>销售规格</span>
+                <span class="required">*</span>
+                <span class="help-badge">?</span>
+              </div>
+              <div class="sales-item-content">
+                <div class="sales-header-row">
+                  <el-tag>SKU {{ form.skus.length }} 条</el-tag>
+                </div>
+                <div v-if="!readonly && form.skus.length > 0" class="batch-panel">
+                  <el-space wrap>
+                    <el-input-number v-model="batchSku.price" :min="0" :step="0.01" controls-position="right" placeholder="价格(元)" />
+                    <el-input-number v-model="batchSku.stock" :min="0" controls-position="right" placeholder="数量(库存)" />
+                    <el-text type="info">已选 {{ selectedSkuIndexes.length }} 条 SKU</el-text>
+                    <el-button type="primary" @click="applyBatchSku">批量应用</el-button>
+                  </el-space>
                 </div>
 
-                <div v-if="!readonly" class="sales-value-item">
-                  <el-button class="slot-plus" @click="addSalesValueSlot(property.propertyId)">+</el-button>
+                <el-alert
+                  v-if="form.specType && propertyList.length === 0"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                  title="请先在上方选择销售属性值，再自动生成销售规格（SKU）"
+                />
+
+                <div v-else class="sku-table-wrap">
+                  <el-table :data="orderedSkuRows" border :row-key="getSkuRowKey" style="width: 100%" class="sku-table">
+                    <el-table-column v-if="!readonly" label="选择" width="70" fixed="left">
+                      <template #header>
+                        <el-checkbox
+                          :model-value="isAllSkuSelected"
+                          :indeterminate="isSkuSelectionIndeterminate"
+                          @change="(value: string | number | boolean) => toggleSelectAllSku(Boolean(value))"
+                        />
+                      </template>
+                      <template #default="scope">
+                        <el-checkbox
+                          :model-value="selectedSkuIndexes.includes(scope.row.sourceIndex)"
+                          @change="(value: string | number | boolean) => toggleSelectSku(scope.row.sourceIndex, Boolean(value))"
+                        />
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="SKU搜索主图" width="180">
+                      <template #default="scope">
+                        <div class="sku-image-cell">
+                          <button
+                            type="button"
+                            class="slot-img-btn"
+                            :disabled="readonly"
+                            @click="triggerSkuImageUpload(scope.row.sourceIndex)"
+                          >
+                            <el-image
+                              v-if="resolvePreviewUrl(scope.row.sku.picUrl)"
+                              :src="resolvePreviewUrl(scope.row.sku.picUrl)"
+                              fit="cover"
+                              style="width: 32px; height: 32px; border-radius: 6px"
+                            />
+                            <span v-else>图</span>
+                          </button>
+                        </div>
+                      </template>
+                    </el-table-column>
+
+                    <el-table-column
+                      v-for="property in propertyList"
+                      :key="property.id"
+                      :label="property.name"
+                      :min-width="property.id === colorPropertyId || property.name.includes('色') ? 180 : 140"
+                    >
+                      <template #default="scope">
+                        <div class="sku-prop-cell">
+                          <el-image
+                            v-if="(property.id === colorPropertyId || property.name.includes('色')) && getSkuPropertyPic(scope.row.sku, property.id)"
+                            :src="resolvePreviewUrl(getSkuPropertyPic(scope.row.sku, property.id))"
+                            fit="cover"
+                            style="width: 24px; height: 24px; border-radius: 4px"
+                          />
+                          <span>{{ getSkuPropertyName(scope.row.sku, property.id) }}</span>
+                        </div>
+                      </template>
+                    </el-table-column>
+
+                    <el-table-column label="商品条码" width="150">
+                      <template #default="scope"><el-input :model-value="scope.row.sku.barCode" :disabled="readonly" size="small" @input="(value: string | number) => patchSku(scope.row.sourceIndex, 'barCode', String(value))" /></template>
+                    </el-table-column>
+                    <el-table-column label="价格(元)" width="130">
+                      <template #default="scope"><el-input-number :model-value="scope.row.sku.price" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'price', Number(value || 0))" /></template>
+                    </el-table-column>
+                    <el-table-column label="市场价(元)" width="130">
+                      <template #default="scope"><el-input-number :model-value="scope.row.sku.marketPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'marketPrice', Number(value || 0))" /></template>
+                    </el-table-column>
+                    <el-table-column label="成本价(元)" width="130">
+                      <template #default="scope"><el-input-number :model-value="scope.row.sku.costPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'costPrice', Number(value || 0))" /></template>
+                    </el-table-column>
+                    <el-table-column label="库存" width="120">
+                      <template #default="scope"><el-input-number :model-value="scope.row.sku.stock" :disabled="readonly" size="small" :min="0" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'stock', Number(value || 0))" /></template>
+                    </el-table-column>
+                    <el-table-column label="重量(kg)" width="120">
+                      <template #default="scope"><el-input-number :model-value="scope.row.sku.weight" :disabled="readonly" size="small" :min="0" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'weight', Number(value || 0))" /></template>
+                    </el-table-column>
+                    <el-table-column label="体积(m³)" width="120">
+                      <template #default="scope"><el-input-number :model-value="scope.row.sku.volume" :disabled="readonly" size="small" :min="0" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'volume', Number(value || 0))" /></template>
+                    </el-table-column>
+                    <el-table-column v-if="form.specType && !readonly" label="操作" width="90" fixed="right">
+                      <template #default="scope">
+                        <el-button link type="danger" @click="deleteSku(scope.row.sourceIndex)">删除</el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
                 </div>
               </div>
             </div>
           </div>
-
-          <div class="sales-header-row" style="margin-top: 16px">
-            <span>销售规格</span>
-            <el-tag>SKU {{ form.skus.length }} 条</el-tag>
-          </div>
-
-          <div v-if="!readonly && form.skus.length > 0" class="batch-panel">
-            <el-space wrap>
-              <el-input-number v-model="batchSku.price" :min="0" :step="0.01" controls-position="right" placeholder="价格(元)" />
-              <el-input-number v-model="batchSku.stock" :min="0" controls-position="right" placeholder="数量(库存)" />
-              <el-text type="info">已选 {{ selectedSkuIndexes.length }} 条 SKU</el-text>
-              <el-button type="primary" @click="applyBatchSku">批量应用</el-button>
-            </el-space>
-          </div>
-
-          <el-alert
-            v-if="form.specType && propertyList.length === 0"
-            type="info"
-            :closable="false"
-            show-icon
-            title="请先在上方选择销售属性值，再自动生成销售规格（SKU）"
-          />
-
-          <div v-else class="sku-table-wrap">
-            <el-table :data="orderedSkuRows" border :row-key="getSkuRowKey" style="width: 100%" class="sku-table">
-              <el-table-column v-if="!readonly" label="选择" width="70" fixed="left">
-                <template #header>
-                  <el-checkbox
-                    :model-value="isAllSkuSelected"
-                    :indeterminate="isSkuSelectionIndeterminate"
-                    @change="(value: string | number | boolean) => toggleSelectAllSku(Boolean(value))"
-                  />
-                </template>
-                <template #default="scope">
-                  <el-checkbox
-                    :model-value="selectedSkuIndexes.includes(scope.row.sourceIndex)"
-                    @change="(value: string | number | boolean) => toggleSelectSku(scope.row.sourceIndex, Boolean(value))"
-                  />
-                </template>
-              </el-table-column>
-              <el-table-column label="SKU搜索主图" width="140">
-                <template #default="scope">
-                  <el-input
-                    :model-value="scope.row.sku.picUrl"
-                    :disabled="readonly"
-                    size="small"
-                    placeholder="可选，留空回退"
-                    @input="(value: string | number) => patchSku(scope.row.sourceIndex, 'picUrl', String(value))"
-                  />
-                </template>
-              </el-table-column>
-
-              <el-table-column
-                v-for="property in propertyList"
-                :key="property.id"
-                :label="property.name"
-                :min-width="property.id === colorPropertyId || property.name.includes('色') ? 180 : 140"
-              >
-                <template #default="scope">
-                  <div class="sku-prop-cell">
-                    <el-image
-                      v-if="(property.id === colorPropertyId || property.name.includes('色')) && getSkuPropertyPic(scope.row.sku, property.id)"
-                      :src="resolvePreviewUrl(getSkuPropertyPic(scope.row.sku, property.id))"
-                      fit="cover"
-                      style="width: 24px; height: 24px; border-radius: 4px"
-                    />
-                    <span>{{ getSkuPropertyName(scope.row.sku, property.id) }}</span>
-                  </div>
-                </template>
-              </el-table-column>
-
-              <el-table-column label="商品条码" width="150">
-                <template #default="scope"><el-input :model-value="scope.row.sku.barCode" :disabled="readonly" size="small" @input="(value: string | number) => patchSku(scope.row.sourceIndex, 'barCode', String(value))" /></template>
-              </el-table-column>
-              <el-table-column label="价格(元)" width="130">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.price" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'price', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column label="市场价(元)" width="130">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.marketPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'marketPrice', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column label="成本价(元)" width="130">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.costPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'costPrice', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column label="库存" width="120">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.stock" :disabled="readonly" size="small" :min="0" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'stock', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column label="重量(kg)" width="120">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.weight" :disabled="readonly" size="small" :min="0" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'weight', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column label="体积(m³)" width="120">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.volume" :disabled="readonly" size="small" :min="0" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'volume', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column v-if="form.subCommissionType" label="一级返佣(元)" width="140">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.subCommissionFirstPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'subCommissionFirstPrice', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column v-if="form.subCommissionType" label="二级返佣(元)" width="140">
-                <template #default="scope"><el-input-number :model-value="scope.row.sku.subCommissionSecondPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'subCommissionSecondPrice', Number(value || 0))" /></template>
-              </el-table-column>
-              <el-table-column v-if="form.specType && !readonly" label="操作" width="90" fixed="right">
-                <template #default="scope">
-                  <el-button link type="danger" @click="deleteSku(scope.row.sourceIndex)">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </template>
-
-        <template v-else>
-          <div class="sku-table-wrap">
-            <el-table :data="[{ sku: form.skus[0] || createDefaultSku(), sourceIndex: 0 }]" border style="width: 100%" class="sku-table">
-              <el-table-column label="价格(元)" width="140"><template #default="scope"><el-input-number :model-value="scope.row.sku.price" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'price', Number(value || 0))" /></template></el-table-column>
-              <el-table-column label="市场价(元)" width="140"><template #default="scope"><el-input-number :model-value="scope.row.sku.marketPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'marketPrice', Number(value || 0))" /></template></el-table-column>
-              <el-table-column label="成本价(元)" width="140"><template #default="scope"><el-input-number :model-value="scope.row.sku.costPrice" :disabled="readonly" size="small" :min="0" :step="0.01" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'costPrice', Number(value || 0))" /></template></el-table-column>
-              <el-table-column label="库存" width="140"><template #default="scope"><el-input-number :model-value="scope.row.sku.stock" :disabled="readonly" size="small" :min="0" controls-position="right" @change="(value: number | undefined) => patchSku(scope.row.sourceIndex, 'stock', Number(value || 0))" /></template></el-table-column>
-            </el-table>
-          </div>
-        </template>
       </div>
 
       <div ref="deliveryRef" class="section-block">
@@ -275,17 +335,73 @@
       </div>
 
       <div ref="descriptionRef" class="section-block">
-        <h3>图文描述</h3>
-        <el-input v-model="form.description" :disabled="readonly" type="textarea" :rows="8" placeholder="请输入商品详情" />
-      </div>
-
-      <div ref="otherRef" class="section-block">
-        <h3>其它设置</h3>
+        <h3>图文素材</h3>
         <el-form label-width="120px">
-          <el-row :gutter="12">
-            <el-col :span="8"><el-form-item label="赠送积分"><el-input-number v-model="form.giveIntegral" :disabled="readonly" :min="0" style="width: 100%" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="活动排序"><el-input v-model="form.activityOrders" :disabled="readonly" /></el-form-item></el-col>
-          </el-row>
+          <el-form-item label="基础素材(3:4)">
+            <div style="width: 100%">
+              <div style="margin-bottom: 8px; color: #64748b">3:4主图（最多 5 张）</div>
+              <div class="material-image-list">
+                <div v-for="(imageUrl, index) in form.materialPicUrls || []" :key="`${imageUrl}-${index}`" class="material-image-item">
+                  <el-image :src="resolvePreviewUrl(imageUrl)" fit="cover" style="width: 72px; height: 96px; border-radius: 8px; border: 1px solid #e5e7eb" />
+                  <el-button v-if="!readonly" type="danger" link @click="removeMaterialImage(index)">删除</el-button>
+                </div>
+                <el-button
+                  v-if="!readonly"
+                  :disabled="(form.materialPicUrls || []).length >= MATERIAL_IMAGE_MAX_SIZE"
+                  @click="triggerMaterialUpload"
+                >
+                  上传3:4主图
+                </el-button>
+              </div>
+            </div>
+          </el-form-item>
+          <el-form-item label="导购素材">
+            <div style="width: 100%">
+              <div style="margin-bottom: 8px; color: #64748b">宝贝详情</div>
+              <div class="detail-editor">
+                <div class="detail-editor-left">
+                  <div class="detail-editor-title">添加</div>
+                  <el-button :disabled="readonly" @click="addDetailTextModule">文字</el-button>
+                  <el-button :disabled="readonly" @click="addDetailImageModule">图片</el-button>
+                </div>
+                <div class="detail-editor-right">
+                  <div v-if="!detailModules.length" class="detail-empty">暂无详情模块，请先添加文字或图片模块</div>
+                  <div v-for="(module, index) in detailModules" :key="module.id" class="detail-module-card">
+                    <div class="detail-module-header">
+                      <el-tag size="small">#{{ index + 1 }}</el-tag>
+                      <el-space>
+                        <el-button size="small" :disabled="readonly || index === 0" @click="moveDetailModuleUp(index)">上移</el-button>
+                        <el-button size="small" :disabled="readonly || index === detailModules.length - 1" @click="moveDetailModuleDown(index)">下移</el-button>
+                        <el-button size="small" type="danger" :disabled="readonly" @click="removeDetailModule(index)">删除</el-button>
+                      </el-space>
+                    </div>
+                    <div v-if="module.type === 'text'">
+                      <el-input
+                        :model-value="module.content"
+                        :disabled="readonly"
+                        type="textarea"
+                        :rows="4"
+                        placeholder="请输入文字内容"
+                        @input="(value: string | number) => patchDetailTextModule(index, String(value))"
+                      />
+                    </div>
+                    <div v-else class="detail-image-module">
+                      <el-image
+                        v-if="resolvePreviewUrl(module.content)"
+                        :src="resolvePreviewUrl(module.content)"
+                        fit="cover"
+                        style="width: 96px; height: 96px; border-radius: 8px; border: 1px solid #e5e7eb"
+                      />
+                      <div v-else class="cover-upload-placeholder">暂无</div>
+                      <div class="detail-image-actions">
+                        <el-button :disabled="readonly" @click="triggerDetailImageUpload(index)">上传图片</el-button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-form-item>
         </el-form>
       </div>
 
@@ -298,6 +414,10 @@
     </el-card>
 
     <input ref="slotUploadInputRef" type="file" accept="image/*" style="display: none" @change="handleSalesSlotImageSelect" />
+    <input ref="coverUploadInputRef" type="file" accept="image/*" style="display: none" @change="handleCoverImageSelect" />
+    <input ref="materialUploadInputRef" type="file" accept="image/*" style="display: none" @change="handleMaterialImageSelect" />
+    <input ref="detailImageUploadInputRef" type="file" accept="image/*" style="display: none" @change="handleDetailImageSelect" />
+    <input ref="skuImageUploadInputRef" type="file" accept="image/*" style="display: none" @change="handleSkuImageSelect" />
   </div>
 </template>
 
@@ -326,14 +446,13 @@ import {
   updateSpu
 } from '../../api/admin';
 
-type FormSection = 'info' | 'sku' | 'delivery' | 'description' | 'other';
+type FormSection = 'info' | 'sku' | 'delivery' | 'description';
 
 const FORM_SECTION_NAV: Array<{ key: FormSection; label: string }> = [
   { key: 'info', label: '基础信息' },
   { key: 'sku', label: '销售信息' },
   { key: 'delivery', label: '物流服务' },
-  { key: 'description', label: '图文描述' },
-  { key: 'other', label: '其它设置' }
+  { key: 'description', label: '图文素材' }
 ];
 
 const DELIVERY_TYPE_EXPRESS = 1;
@@ -341,6 +460,8 @@ const DELIVERY_TYPE_PICK_UP = 2;
 const DELIVERY_TYPE_SAME_CITY = 3;
 const PROPERTY_TYPE_DISPLAY = 0;
 const PROPERTY_TYPE_SALES = 1;
+const MAIN_IMAGE_MAX_SIZE = 5;
+const MATERIAL_IMAGE_MAX_SIZE = 5;
 
 interface PropertyAndValues {
   id: number;
@@ -359,6 +480,22 @@ type SalesSlotMap = Record<number, SalesValueSlot[]>;
 interface OrderedSkuRow {
   sku: SkuResp;
   sourceIndex: number;
+}
+
+type DetailModuleType = 'text' | 'image';
+
+interface DetailModule {
+  id: string;
+  type: DetailModuleType;
+  content: string;
+}
+
+interface CategoryCascaderOption {
+  id: number;
+  parentId: number;
+  name: string;
+  isLeaf?: boolean;
+  children?: CategoryCascaderOption[];
 }
 
 const route = useRoute();
@@ -398,7 +535,7 @@ function createDefaultForm(): SpuSaveReq {
     sliderPicUrls: [],
     videoUrl: '',
     sort: 0,
-    specType: false,
+    specType: true,
     deliveryTypes: [],
     deliveryTemplateId: 0,
     recommendHot: false,
@@ -411,6 +548,7 @@ function createDefaultForm(): SpuSaveReq {
     subCommissionType: false,
     activityOrders: '',
     displayProperties: [],
+    materialPicUrls: [],
     skus: [createDefaultSku()]
   };
 }
@@ -516,13 +654,20 @@ const propertyList = ref<PropertyAndValues[]>([]);
 const previewUrlMap = ref<Record<string, string>>({});
 
 const slotUploadInputRef = ref<HTMLInputElement | null>(null);
+const coverUploadInputRef = ref<HTMLInputElement | null>(null);
+const materialUploadInputRef = ref<HTMLInputElement | null>(null);
+const detailImageUploadInputRef = ref<HTMLInputElement | null>(null);
+const skuImageUploadInputRef = ref<HTMLInputElement | null>(null);
 const pendingSlotUploadTarget = ref<{ propertyId: number; slotIndex: number } | null>(null);
+const pendingDetailImageModuleIndex = ref<number | null>(null);
+const pendingSkuImageUploadIndex = ref<number | null>(null);
+const detailModuleSeed = ref<number>(0);
+const detailModules = ref<DetailModule[]>([]);
 
 const infoRef = ref<HTMLElement | null>(null);
 const skuRef = ref<HTMLElement | null>(null);
 const deliveryRef = ref<HTMLElement | null>(null);
 const descriptionRef = ref<HTMLElement | null>(null);
-const otherRef = ref<HTMLElement | null>(null);
 
 const pageTitle = computed(() => {
   if (!spuId) {
@@ -538,6 +683,49 @@ const colorPropertyId = computed(() => {
   }
   const colorByName = propertyList.value.find((item) => item.name.includes('色'));
   return colorByName?.id;
+});
+
+const categoryCascaderProps = {
+  value: 'id',
+  label: 'name',
+  children: 'children',
+  emitPath: false,
+  checkStrictly: false
+};
+
+const categoryCascaderOptions = computed<CategoryCascaderOption[]>(() => {
+  const nodeMap = new Map<number, CategoryCascaderOption>();
+  categories.value.forEach((item) => {
+    nodeMap.set(item.id, {
+      id: item.id,
+      parentId: item.parentId,
+      name: item.name,
+      isLeaf: item.isLeaf,
+      children: []
+    });
+  });
+
+  const roots: CategoryCascaderOption[] = [];
+  nodeMap.forEach((node) => {
+    const parent = nodeMap.get(node.parentId);
+    if (parent) {
+      parent.children = [...(parent.children ?? []), node];
+      return;
+    }
+    roots.push(node);
+  });
+
+  const markNode = (node: CategoryCascaderOption): CategoryCascaderOption => {
+    const childList = (node.children ?? []).map(markNode);
+    const leaf = typeof node.isLeaf === 'boolean' ? node.isLeaf : childList.length === 0;
+    return {
+      ...node,
+      name: leaf ? node.name : `${node.name}`,
+      children: childList
+    };
+  };
+
+  return roots.map(markNode);
 });
 
 const orderedSkuRows = computed<OrderedSkuRow[]>(() => {
@@ -575,21 +763,12 @@ function getSectionRef(section: FormSection) {
   if (section === 'info') return infoRef.value;
   if (section === 'sku') return skuRef.value;
   if (section === 'delivery') return deliveryRef.value;
-  if (section === 'description') return descriptionRef.value;
-  return otherRef.value;
+  return descriptionRef.value;
 }
 
 function scrollToSection(section: FormSection) {
   activeSection.value = section;
   getSectionRef(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function onSpecTypeChange() {
-  if (!form.value.specType) {
-    form.value.skus = [form.value.skus[0] ?? createDefaultSku()];
-    return;
-  }
-  form.value.skus = [];
 }
 
 function getDisplayPropertyValue(propertyId: number) {
@@ -761,6 +940,98 @@ function triggerSalesSlotImageUpload(propertyId: number, slotIndex: number) {
   slotUploadInputRef.value?.click();
 }
 
+function triggerCoverUpload() {
+  if ((form.value.sliderPicUrls || []).length >= MAIN_IMAGE_MAX_SIZE) {
+    ElMessage.warning(`1:1主图最多上传 ${MAIN_IMAGE_MAX_SIZE} 张`);
+    return;
+  }
+  coverUploadInputRef.value?.click();
+}
+
+function triggerMaterialUpload() {
+  if ((form.value.materialPicUrls || []).length >= MATERIAL_IMAGE_MAX_SIZE) {
+    ElMessage.warning(`3:4主图最多上传 ${MATERIAL_IMAGE_MAX_SIZE} 张`);
+    return;
+  }
+  materialUploadInputRef.value?.click();
+}
+
+function removeMaterialImage(index: number) {
+  form.value.materialPicUrls = (form.value.materialPicUrls || []).filter((_, itemIndex) => itemIndex !== index);
+}
+
+function removeMainImage(index: number) {
+  const nextList = (form.value.sliderPicUrls || []).filter((_, itemIndex) => itemIndex !== index);
+  form.value.sliderPicUrls = nextList;
+  form.value.picUrl = nextList[0] || '';
+}
+
+function generateDetailModuleId() {
+  detailModuleSeed.value += 1;
+  return `detail-module-${Date.now()}-${detailModuleSeed.value}`;
+}
+
+function syncDescriptionFromModules() {
+  const text = detailModules.value
+    .map((item) => (item.type === 'image' ? `<img src="${item.content}" />` : item.content))
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join('\n');
+  form.value.description = text;
+}
+
+function addDetailTextModule() {
+  detailModules.value = [...detailModules.value, { id: generateDetailModuleId(), type: 'text', content: '' }];
+  syncDescriptionFromModules();
+}
+
+function addDetailImageModule() {
+  detailModules.value = [...detailModules.value, { id: generateDetailModuleId(), type: 'image', content: '' }];
+  syncDescriptionFromModules();
+}
+
+function removeDetailModule(index: number) {
+  detailModules.value = detailModules.value.filter((_, moduleIndex) => moduleIndex !== index);
+  syncDescriptionFromModules();
+}
+
+function moveDetailModuleUp(index: number) {
+  if (index <= 0) {
+    return;
+  }
+  const list = [...detailModules.value];
+  [list[index - 1], list[index]] = [list[index], list[index - 1]];
+  detailModules.value = list;
+  syncDescriptionFromModules();
+}
+
+function moveDetailModuleDown(index: number) {
+  if (index >= detailModules.value.length - 1) {
+    return;
+  }
+  const list = [...detailModules.value];
+  [list[index + 1], list[index]] = [list[index], list[index + 1]];
+  detailModules.value = list;
+  syncDescriptionFromModules();
+}
+
+function patchDetailTextModule(index: number, content: string) {
+  detailModules.value = detailModules.value.map((item, moduleIndex) =>
+    moduleIndex === index ? { ...item, content } : item
+  );
+  syncDescriptionFromModules();
+}
+
+function triggerDetailImageUpload(index: number) {
+  pendingDetailImageModuleIndex.value = index;
+  detailImageUploadInputRef.value?.click();
+}
+
+function triggerSkuImageUpload(index: number) {
+  pendingSkuImageUploadIndex.value = index;
+  skuImageUploadInputRef.value?.click();
+}
+
 async function handleSalesSlotImageSelect(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -788,12 +1059,132 @@ async function handleSalesSlotImageSelect(event: Event) {
   }
 }
 
+async function handleCoverImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) {
+    return;
+  }
+  if ((form.value.sliderPicUrls || []).length >= MAIN_IMAGE_MAX_SIZE) {
+    ElMessage.warning(`1:1主图最多上传 ${MAIN_IMAGE_MAX_SIZE} 张`);
+    return;
+  }
+  try {
+    const sign = await getPresignedUploadUrl({
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      pathPrefix: 'product/spu/main-1x1'
+    });
+    await axios.put(sign.uploadUrl, file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream' }
+    });
+    const nextMainImages = [...(form.value.sliderPicUrls || []), sign.objectUrl].slice(0, MAIN_IMAGE_MAX_SIZE);
+    form.value.sliderPicUrls = nextMainImages;
+    form.value.picUrl = nextMainImages[0] || '';
+    await loadPreviewUrls([sign.objectUrl]);
+    ElMessage.success('1:1主图上传成功');
+  } catch (error) {
+    errorMessage.value = `1:1主图上传失败：${(error as Error).message}`;
+  }
+}
+
+async function handleMaterialImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) {
+    return;
+  }
+  if ((form.value.materialPicUrls || []).length >= MATERIAL_IMAGE_MAX_SIZE) {
+    ElMessage.warning(`3:4主图最多上传 ${MATERIAL_IMAGE_MAX_SIZE} 张`);
+    return;
+  }
+  try {
+    const sign = await getPresignedUploadUrl({
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      pathPrefix: 'product/spu/material-3x4'
+    });
+    await axios.put(sign.uploadUrl, file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream' }
+    });
+    form.value.materialPicUrls = [...(form.value.materialPicUrls || []), sign.objectUrl].slice(0, MATERIAL_IMAGE_MAX_SIZE);
+    await loadPreviewUrls([sign.objectUrl]);
+    ElMessage.success('3:4主图上传成功');
+  } catch (error) {
+    errorMessage.value = `3:4主图上传失败：${(error as Error).message}`;
+  }
+}
+
+async function handleDetailImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || pendingDetailImageModuleIndex.value === null) {
+    return;
+  }
+  try {
+    const sign = await getPresignedUploadUrl({
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      pathPrefix: 'product/spu/detail'
+    });
+    await axios.put(sign.uploadUrl, file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream' }
+    });
+    detailModules.value = detailModules.value.map((item, moduleIndex) =>
+      moduleIndex === pendingDetailImageModuleIndex.value ? { ...item, content: sign.objectUrl } : item
+    );
+    syncDescriptionFromModules();
+    await loadPreviewUrls([sign.objectUrl]);
+    ElMessage.success('详情图片上传成功');
+  } catch (error) {
+    errorMessage.value = `详情图片上传失败：${(error as Error).message}`;
+  } finally {
+    pendingDetailImageModuleIndex.value = null;
+  }
+}
+
+async function handleSkuImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || pendingSkuImageUploadIndex.value === null) {
+    return;
+  }
+  try {
+    const sign = await getPresignedUploadUrl({
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      pathPrefix: 'product/spu/sku'
+    });
+    await axios.put(sign.uploadUrl, file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream' }
+    });
+    patchSku(pendingSkuImageUploadIndex.value, 'picUrl', sign.objectUrl);
+    await loadPreviewUrls([sign.objectUrl]);
+    ElMessage.success('SKU主图上传成功');
+  } catch (error) {
+    errorMessage.value = `SKU主图上传失败：${(error as Error).message}`;
+  } finally {
+    pendingSkuImageUploadIndex.value = null;
+  }
+}
+
 function resolvePreviewUrl(objectUrl?: string) {
   const key = objectUrl?.trim();
   if (!key) {
     return '';
   }
   return previewUrlMap.value[key] || '';
+}
+
+function isLeafCategory(category: CategoryResp) {
+  if (typeof category.isLeaf === 'boolean') {
+    return category.isLeaf;
+  }
+  return !categories.value.some((item) => item.parentId === category.id);
 }
 
 async function loadPreviewUrls(objectUrls: string[]) {
@@ -832,17 +1223,32 @@ async function loadCategoryProperties(categoryId: number) {
     displayPropertyOptions.value = [];
     return;
   }
+  const isPropertyEnabled = (enabled: unknown) => enabled === true || enabled === 0 || enabled === '0';
   const [salesList, displayList] = await Promise.all([
     getCategoryPropertyList(categoryId, PROPERTY_TYPE_SALES),
     getCategoryPropertyList(categoryId, PROPERTY_TYPE_DISPLAY)
   ]);
-  salesPropertyOptions.value = salesList.filter((item) => item.enabled);
-  displayPropertyOptions.value = displayList.filter((item) => item.enabled);
+  salesPropertyOptions.value = salesList.filter((item) => isPropertyEnabled(item.enabled));
+  displayPropertyOptions.value = displayList.filter((item) => isPropertyEnabled(item.enabled));
 }
 
-async function onCategoryChange(categoryId: number) {
+function normalizeCascaderValue(value: number | string | Array<number | string> | undefined) {
+  if (Array.isArray(value)) {
+    const tail = value[value.length - 1];
+    return Number(tail || 0);
+  }
+  if (typeof value === 'string' && value.includes(',')) {
+    const segments = value.split(',').map((item) => item.trim()).filter(Boolean);
+    return Number(segments[segments.length - 1] || 0);
+  }
+  return Number(value || 0);
+}
+
+async function onCategoryChange(categoryId?: number | string | Array<number | string>) {
+  const selectedCategoryId = normalizeCascaderValue(categoryId);
+  form.value.categoryId = selectedCategoryId;
   try {
-    await loadCategoryProperties(categoryId);
+    await loadCategoryProperties(selectedCategoryId);
     form.value.displayProperties = [];
     salesValueSlots.value = {};
     propertyList.value = [];
@@ -879,9 +1285,10 @@ async function loadDetail(targetId: number) {
     brandId: detail.brandId,
     picUrl: detail.picUrl,
     sliderPicUrls: detail.sliderPicUrls || [],
+    materialPicUrls: detail.materialPicUrls || [],
     videoUrl: detail.videoUrl || '',
     sort: detail.sort,
-    specType: detail.specType,
+    specType: true,
     deliveryTypes: detail.deliveryTypes || [],
     deliveryTemplateId: detail.deliveryTemplateId || 0,
     recommendHot: Boolean(detail.recommendHot),
@@ -891,11 +1298,15 @@ async function loadDetail(targetId: number) {
     recommendGood: Boolean(detail.recommendGood),
     giveIntegral: detail.giveIntegral || 0,
     giveCouponTemplateIds: detail.giveCouponTemplateIds || '',
-    subCommissionType: Boolean(detail.subCommissionType),
+    subCommissionType: false,
     activityOrders: detail.activityOrders || '',
     displayProperties: detail.displayProperties || [],
     skus: detailSkus
   };
+  await loadPreviewUrls([detail.picUrl, ...(detail.sliderPicUrls || []), ...(detail.materialPicUrls || [])]);
+  detailModules.value = detail.description?.trim()
+    ? [{ id: generateDetailModuleId(), type: 'text', content: detail.description }]
+    : [];
 
   const propertyListFromDetail = buildPropertyListFromSkus(detailSkus);
   propertyList.value = propertyListFromDetail;
@@ -927,6 +1338,12 @@ async function submit() {
 
   if (!form.value.categoryId || !form.value.brandId) {
     errorMessage.value = '请选择分类和品牌';
+    activeSection.value = 'info';
+    return;
+  }
+  const selectedCategory = categories.value.find((item) => item.id === form.value.categoryId);
+  if (!selectedCategory || !isLeafCategory(selectedCategory)) {
+    errorMessage.value = '请选择可发布的叶子类目';
     activeSection.value = 'info';
     return;
   }
@@ -977,6 +1394,8 @@ async function submit() {
   try {
     const payload: SpuSaveReq = {
       ...form.value,
+      specType: true,
+      subCommissionType: false,
       skus: form.value.skus.map((sku) => ({
         ...sku,
         price: yuanToFen(Number(sku.price || 0)),
@@ -986,6 +1405,7 @@ async function submit() {
         subCommissionSecondPrice: yuanToFen(Number(sku.subCommissionSecondPrice || 0))
       })),
       sliderPicUrls: (form.value.sliderPicUrls ?? []).filter(Boolean),
+      materialPicUrls: (form.value.materialPicUrls ?? []).filter(Boolean),
       displayProperties: (form.value.displayProperties ?? []).filter((item) => item.valueText?.trim())
     };
 
@@ -1002,6 +1422,54 @@ async function submit() {
     loading.value = false;
   }
 }
+
+watch(
+  () => form.value.picUrl,
+  (value) => {
+    if (!value) {
+      return;
+    }
+    void loadPreviewUrls([value]);
+  }
+);
+
+watch(
+  () => form.value.sliderPicUrls,
+  (value) => {
+    const list = (value || []).filter(Boolean);
+    if (!list.length) {
+      return;
+    }
+    void loadPreviewUrls(list);
+  },
+  { deep: true }
+);
+
+watch(
+  () => form.value.materialPicUrls,
+  (value) => {
+    const list = (value || []).filter(Boolean);
+    if (!list.length) {
+      return;
+    }
+    void loadPreviewUrls(list);
+  },
+  { deep: true }
+);
+
+watch(
+  () => detailModules.value,
+  (modules) => {
+    const objectUrls = modules
+      .filter((item) => item.type === 'image')
+      .map((item) => item.content.trim())
+      .filter(Boolean);
+    if (objectUrls.length) {
+      void loadPreviewUrls(objectUrls);
+    }
+  },
+  { deep: true }
+);
 
 watch(
   () => form.value.categoryId,
@@ -1087,7 +1555,7 @@ watch(
 );
 
 watch(
-  () => [infoRef.value, skuRef.value, deliveryRef.value, descriptionRef.value, otherRef.value],
+  () => [infoRef.value, skuRef.value, deliveryRef.value, descriptionRef.value],
   async () => {
     await nextTick();
     const onScroll = () => {
@@ -1095,8 +1563,7 @@ watch(
         { key: 'info', element: infoRef.value },
         { key: 'sku', element: skuRef.value },
         { key: 'delivery', element: deliveryRef.value },
-        { key: 'description', element: descriptionRef.value },
-        { key: 'other', element: otherRef.value }
+        { key: 'description', element: descriptionRef.value }
       ];
       const offset = 160;
       let current: FormSection = 'info';
@@ -1170,10 +1637,98 @@ onMounted(async () => {
   scroll-margin-top: 130px;
 }
 
-.spec-switch-row {
-  display: flex;
-  gap: 24px;
+.base-info-grid {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  row-gap: 12px;
+  column-gap: 12px;
   margin-bottom: 12px;
+}
+
+.base-info-label {
+  font-size: 14px;
+  font-weight: 400;
+  color: #000;
+  line-height: 40px;
+}
+
+.base-info-label.required::after {
+  content: ' *';
+  color: #ef4444;
+}
+
+.base-info-content {
+  min-width: 0;
+}
+
+.base-info-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+.base-info-tip-highlight {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #f97316;
+}
+
+.main-image-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.main-image-slot {
+  position: relative;
+  height: 120px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.main-image-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+}
+
+.main-image-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+.main-image-placeholder-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px dashed #9ca3af;
+  color: #9ca3af;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.main-image-placeholder-text {
+  color: #9ca3af;
+  font-size: 13px;
 }
 
 .sales-header-row {
@@ -1182,6 +1737,48 @@ onMounted(async () => {
   gap: 8px;
   margin-bottom: 10px;
   font-weight: 600;
+}
+
+.sales-two-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sales-item {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.sales-item-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.help-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.sales-item-content {
+  background: #f8f9fc;
+  border: 1px solid #e8ebf3;
+  border-radius: 10px;
+  padding: 10px;
+  min-width: 0;
 }
 
 .sales-property-panel {
@@ -1215,7 +1812,112 @@ onMounted(async () => {
 }
 
 .required {
-  color: #ef4444;
+  color: #000;
+}
+
+.cover-upload-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cover-upload-placeholder {
+  width: 56px;
+  height: 56px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  background: #f8fafc;
+}
+
+.main-cover-upload-placeholder {
+  width: 72px;
+  height: 72px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  background: #f8fafc;
+}
+
+.material-image-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.material-image-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.detail-editor {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+}
+
+.detail-editor-left {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-editor-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.detail-editor-right {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-module-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.detail-module-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.detail-image-module {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detail-image-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-empty {
+  color: #94a3b8;
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
 }
 
 .sales-value-grid {
@@ -1255,12 +1957,30 @@ onMounted(async () => {
 
 .sku-table-wrap {
   width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.sku-table :deep(.el-table__inner-wrapper) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.sku-table :deep(.el-table__body-wrapper) {
+  overflow-x: auto;
+  overflow-y: auto;
 }
 
 .sku-prop-cell {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.sku-image-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sku-table :deep(.cell) {
