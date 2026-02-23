@@ -32,7 +32,13 @@
             <el-col :span="8"><el-form-item label="分类" required>
               <el-select v-model="form.categoryId" :disabled="readonly" style="width: 100%" @change="onCategoryChange">
                 <el-option :value="0" label="请选择分类" />
-                <el-option v-for="item in categories" :key="item.id" :label="item.name" :value="item.id" />
+                <el-option
+                  v-for="item in categories"
+                  :key="item.id"
+                  :label="getCategoryOptionLabel(item)"
+                  :value="item.id"
+                  :disabled="!isLeafCategory(item)"
+                />
               </el-select>
             </el-form-item></el-col>
             <el-col :span="8"><el-form-item label="品牌" required>
@@ -796,6 +802,20 @@ function resolvePreviewUrl(objectUrl?: string) {
   return previewUrlMap.value[key] || '';
 }
 
+function isLeafCategory(category: CategoryResp) {
+  if (typeof category.isLeaf === 'boolean') {
+    return category.isLeaf;
+  }
+  return !categories.value.some((item) => item.parentId === category.id);
+}
+
+function getCategoryOptionLabel(category: CategoryResp) {
+  if (isLeafCategory(category)) {
+    return category.name;
+  }
+  return `${category.name}（仅叶子类目可发布）`;
+}
+
 async function loadPreviewUrls(objectUrls: string[]) {
   const unique = Array.from(new Set(objectUrls.map((item) => item.trim()).filter(Boolean)));
   const pending = unique.filter((item) => !previewUrlMap.value[item]);
@@ -927,6 +947,12 @@ async function submit() {
 
   if (!form.value.categoryId || !form.value.brandId) {
     errorMessage.value = '请选择分类和品牌';
+    activeSection.value = 'info';
+    return;
+  }
+  const selectedCategory = categories.value.find((item) => item.id === form.value.categoryId);
+  if (!selectedCategory || !isLeafCategory(selectedCategory)) {
+    errorMessage.value = '请选择可发布的叶子类目';
     activeSection.value = 'info';
     return;
   }

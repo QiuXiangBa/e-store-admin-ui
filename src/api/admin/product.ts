@@ -14,6 +14,7 @@ export interface CategoryResp {
   id: number;
   parentId: number;
   name: string;
+  isLeaf?: boolean;
   picUrl: string;
   bigPicUrl?: string;
   sort: number;
