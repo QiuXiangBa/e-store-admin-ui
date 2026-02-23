@@ -78,6 +78,7 @@ export interface SpuResp {
   brandId: number;
   picUrl: string;
   sliderPicUrls?: string[];
+  materialPicUrls?: string[];
   videoUrl?: string;
   sort: number;
   status: number;
@@ -186,6 +187,7 @@ export interface SpuSaveReq {
   brandId: number;
   picUrl: string;
   sliderPicUrls?: string[];
+  materialPicUrls?: string[];
   videoUrl?: string;
   sort: number;
   specType: boolean;
