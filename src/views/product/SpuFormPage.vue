@@ -163,8 +163,8 @@
                           type="button"
                         >
                           <el-image
-                            v-if="resolvePreviewUrl(slot.picUrl)"
-                            :src="resolvePreviewUrl(slot.picUrl)"
+                            v-if="resolvePreviewUrl(getSalesSlotPicUrl(property.propertyId, slot))"
+                            :src="resolvePreviewUrl(getSalesSlotPicUrl(property.propertyId, slot))"
                             fit="cover"
                             style="width: 32px; height: 32px; border-radius: 6px"
                           />
@@ -932,6 +932,17 @@ function patchSalesValueBySlot(propertyId: number, slotIndex: number, valueId: n
   });
 }
 
+function getSalesSlotPicUrl(propertyId: number, slot: SalesValueSlot) {
+  if (slot.picUrl?.trim()) {
+    return slot.picUrl.trim();
+  }
+  if (!slot.valueId) {
+    return '';
+  }
+  const option = (propertyValueOptions.value[propertyId] || []).find((item) => item.id === slot.valueId);
+  return option?.picUrl?.trim() || '';
+}
+
 function triggerSalesSlotImageUpload(propertyId: number, slotIndex: number) {
   if (readonly.value) {
     return;
@@ -1604,6 +1615,19 @@ watch(
           .filter(Boolean)
       )
     );
+    if (objectUrls.length) {
+      void loadPreviewUrls(objectUrls);
+    }
+  },
+  { deep: true }
+);
+
+watch(
+  () => propertyValueOptions.value,
+  (options) => {
+    const objectUrls = Object.values(options)
+      .flatMap((items) => items.map((item) => item.picUrl?.trim() || ''))
+      .filter(Boolean);
     if (objectUrls.length) {
       void loadPreviewUrls(objectUrls);
     }
