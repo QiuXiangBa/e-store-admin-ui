@@ -88,10 +88,15 @@
     <el-alert v-if="formErrorMessage" :title="formErrorMessage" type="error" show-icon :closable="false" style="margin-bottom: 12px" />
     <el-form label-width="100px">
       <el-form-item label="父级分类">
-        <el-select v-model="form.parentId" style="width: 100%">
-          <el-option :value="0" label="顶级分类" />
-          <el-option v-for="item in rootOptions" :key="item.id" :label="item.name" :value="item.id" />
-        </el-select>
+        <el-cascader
+          v-model="parentCascaderValue"
+          :options="parentCascaderOptions"
+          :props="parentCascaderProps"
+          clearable
+          style="width: 100%"
+          placeholder="请选择父级分类（不选则为顶级分类）"
+          @change="onParentCascaderChange"
+        />
       </el-form-item>
       <el-form-item label="分类名称" required>
         <el-input v-model="form.name" placeholder="请输入分类名称" />
@@ -159,6 +164,12 @@ interface CategoryForm {
 }
 
 type TreeNode = CategoryResp & { children: TreeNode[] };
+interface CategoryCascaderOption {
+  value: number;
+  label: string;
+  children?: CategoryCascaderOption[];
+}
+
 const EMPTY_FORM: CategoryForm = {
   parentId: 0,
   name: '',
@@ -185,10 +196,18 @@ const uploadingBigPic = ref(false);
 const uploadTarget = ref<'picUrl' | 'bigPicUrl'>('picUrl');
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const previewUrlMap = ref<Record<string, string>>({});
+const parentCascaderValue = ref<number[]>([]);
 
-const rootOptions = computed(() => list.value.filter((item) => item.parentId === 0));
 const picPreviewUrl = computed(() => getPreviewUrl(form.value.picUrl));
 const bigPicPreviewUrl = computed(() => getPreviewUrl(form.value.bigPicUrl));
+const parentCascaderProps = {
+  checkStrictly: true,
+  emitPath: true,
+  expandTrigger: 'hover' as const,
+  value: 'value',
+  label: 'label',
+  children: 'children'
+};
 
 function buildTree(items: CategoryResp[]) {
   const map = new Map<number, TreeNode>();
@@ -221,11 +240,45 @@ function buildLevelMap(nodes: TreeNode[], level = 0, map: Record<number, number>
 
 const treeData = computed(() => buildTree(list.value));
 const levelMap = computed(() => buildLevelMap(treeData.value));
+const parentCascaderOptions = computed<CategoryCascaderOption[]>(() => [
+  {
+    value: 0,
+    label: '顶级分类',
+    children: buildParentCascaderOptions(treeData.value, 1)
+  }
+]);
 const tableData = computed(() =>
   onlyTopLevel.value
     ? treeData.value.map((item) => ({ ...item, children: [] }))
     : treeData.value
 );
+
+function buildParentCascaderOptions(nodes: TreeNode[], level: number): CategoryCascaderOption[] {
+  // 父级最多允许选到二级，这样新增节点最大为三级。 / Parent can be selected up to level 2, so new node max level is 3.
+  if (level > 2) {
+    return [];
+  }
+  return nodes.map((node) => ({
+    value: node.id,
+    label: node.name,
+    children: buildParentCascaderOptions(node.children || [], level + 1)
+  }));
+}
+
+function findPathById(nodes: TreeNode[], targetId: number): number[] {
+  for (const node of nodes) {
+    if (node.id === targetId) {
+      return [node.id];
+    }
+    if (node.children?.length) {
+      const childPath = findPathById(node.children, targetId);
+      if (childPath.length) {
+        return [node.id, ...childPath];
+      }
+    }
+  }
+  return [];
+}
 
 const hasSortChanges = computed(() =>
   list.value.some((item) => sortDraftMap.value[item.id] !== undefined && sortDraftMap.value[item.id] !== item.sort)
@@ -323,6 +376,7 @@ async function saveSortBatch() {
 function openCreateDialog() {
   editingId.value = null;
   form.value = { ...EMPTY_FORM };
+  parentCascaderValue.value = [0];
   formErrorMessage.value = '';
   formOpen.value = true;
 }
@@ -337,6 +391,7 @@ function openEditDialog(item: CategoryResp) {
     sort: item.sort,
     status: item.status
   };
+  parentCascaderValue.value = item.parentId > 0 ? findPathById(treeData.value, item.parentId) : [0];
   formErrorMessage.value = '';
   formOpen.value = true;
 }
@@ -344,6 +399,14 @@ function openEditDialog(item: CategoryResp) {
 function closeDialog() {
   formOpen.value = false;
   formErrorMessage.value = '';
+}
+
+function onParentCascaderChange(value?: number[] | number) {
+  if (Array.isArray(value)) {
+    form.value.parentId = value.length ? Number(value[value.length - 1]) : 0;
+    return;
+  }
+  form.value.parentId = Number(value || 0);
 }
 
 async function onSubmit() {
