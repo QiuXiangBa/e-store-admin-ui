@@ -1177,7 +1177,19 @@ function resolvePreviewUrl(objectUrl?: string) {
   if (!key) {
     return '';
   }
-  return previewUrlMap.value[key] || '';
+  const mapped = previewUrlMap.value[key];
+  if (mapped) {
+    return mapped;
+  }
+  if (isSignedPreviewUrl(key)) {
+    return key;
+  }
+  // 私有桶未签名地址不直接返回，等待签名地址填充，避免 FAILED。
+  // Do not return unsigned private URL directly, wait for presigned URL to avoid FAILED.
+  if (key.startsWith('http://') || key.startsWith('https://')) {
+    return '';
+  }
+  return '';
 }
 
 function isLeafCategory(category: CategoryResp) {
@@ -1188,7 +1200,13 @@ function isLeafCategory(category: CategoryResp) {
 }
 
 async function loadPreviewUrls(objectUrls: string[]) {
-  const unique = Array.from(new Set(objectUrls.map((item) => item.trim()).filter(Boolean)));
+  const unique = Array.from(
+    new Set(
+      objectUrls
+        .map((item) => item.trim())
+        .filter((item) => Boolean(item) && !isSignedPreviewUrl(item))
+    )
+  );
   const pending = unique.filter((item) => !previewUrlMap.value[item]);
   if (!pending.length) {
     return;
@@ -1204,6 +1222,28 @@ async function loadPreviewUrls(objectUrls: string[]) {
     })
   );
   previewUrlMap.value = Object.fromEntries([...Object.entries(previewUrlMap.value), ...entries]);
+}
+
+function isSignedPreviewUrl(url: string) {
+  return url.includes('X-Amz-Algorithm=') || url.includes('X-Amz-Signature=');
+}
+
+function collectSkuRelatedObjectUrls(skus: SkuResp[]) {
+  if (!skus.length) {
+    return [];
+  }
+  const urls: string[] = [];
+  skus.forEach((sku) => {
+    if (sku.picUrl) {
+      urls.push(sku.picUrl);
+    }
+    (sku.properties || []).forEach((property) => {
+      if (property.valuePicUrl) {
+        urls.push(property.valuePicUrl);
+      }
+    });
+  });
+  return urls;
 }
 
 async function loadPropertyValueOptions(propertyId: number) {
@@ -1303,7 +1343,12 @@ async function loadDetail(targetId: number) {
     displayProperties: detail.displayProperties || [],
     skus: detailSkus
   };
-  await loadPreviewUrls([detail.picUrl, ...(detail.sliderPicUrls || []), ...(detail.materialPicUrls || [])]);
+  await loadPreviewUrls([
+    detail.picUrl,
+    ...(detail.sliderPicUrls || []),
+    ...(detail.materialPicUrls || []),
+    ...collectSkuRelatedObjectUrls(detailSkus)
+  ]);
   detailModules.value = detail.description?.trim()
     ? [{ id: generateDetailModuleId(), type: 'text', content: detail.description }]
     : [];
@@ -1453,6 +1498,18 @@ watch(
       return;
     }
     void loadPreviewUrls(list);
+  },
+  { deep: true }
+);
+
+watch(
+  () => form.value.skus,
+  (value) => {
+    const objectUrls = collectSkuRelatedObjectUrls(value || []);
+    if (!objectUrls.length) {
+      return;
+    }
+    void loadPreviewUrls(objectUrls);
   },
   { deep: true }
 );
