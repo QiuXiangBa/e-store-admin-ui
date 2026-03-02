@@ -588,8 +588,13 @@ function buildPropertyListFromSkus(skus: SkuResp[]): PropertyAndValues[] {
         });
         return;
       }
-      if (!exists.values.some((value) => value.id === property.valueId)) {
+      const existsValue = exists.values.find((value) => value.id === property.valueId);
+      if (!existsValue) {
         exists.values.push({ id: property.valueId, name: property.valueName, picUrl: property.valuePicUrl });
+        return;
+      }
+      if ((!existsValue.picUrl || !existsValue.picUrl.trim()) && property.valuePicUrl?.trim()) {
+        existsValue.picUrl = property.valuePicUrl.trim();
       }
     });
   });
