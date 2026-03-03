@@ -279,7 +279,7 @@
                       <template #default="scope">
                         <div class="sku-prop-cell">
                           <el-image
-                            v-if="(property.id === colorPropertyId || property.name.includes('色')) && getSkuPropertyPic(scope.row.sku, property.id)"
+                            v-if="getSkuPropertyPic(scope.row.sku, property.id)"
                             :src="resolvePreviewUrl(getSkuPropertyPic(scope.row.sku, property.id))"
                             fit="cover"
                             style="width: 24px; height: 24px; border-radius: 4px"
@@ -870,7 +870,7 @@ function rebuildPropertyListFromSlots(nextSlots: SalesSlotMap) {
         if (!valueName) {
           return;
         }
-        const valuePicUrl = property.supportValueImage ? slot.picUrl || option?.picUrl || '' : option?.picUrl || '';
+        const valuePicUrl = property.supportValueImage ? slot.picUrl || '' : '';
         valuesMap.set(slot.valueId, { id: slot.valueId, name: valueName, picUrl: valuePicUrl });
       });
       return {
@@ -933,19 +933,16 @@ function patchSalesValueBySlot(propertyId: number, slotIndex: number, valueId: n
   patchSalesValueSlot(propertyId, slotIndex, {
     valueId,
     valueName: option?.name || '',
-    picUrl: property?.supportValueImage ? current[slotIndex].picUrl || option?.picUrl || '' : ''
+    picUrl: property?.supportValueImage ? current[slotIndex].picUrl || '' : ''
   });
 }
 
 function getSalesSlotPicUrl(propertyId: number, slot: SalesValueSlot) {
+  void propertyId;
   if (slot.picUrl?.trim()) {
     return slot.picUrl.trim();
   }
-  if (!slot.valueId) {
-    return '';
-  }
-  const option = (propertyValueOptions.value[propertyId] || []).find((item) => item.id === slot.valueId);
-  return option?.picUrl?.trim() || '';
+  return '';
 }
 
 function triggerSalesSlotImageUpload(propertyId: number, slotIndex: number) {
@@ -1620,19 +1617,6 @@ watch(
           .filter(Boolean)
       )
     );
-    if (objectUrls.length) {
-      void loadPreviewUrls(objectUrls);
-    }
-  },
-  { deep: true }
-);
-
-watch(
-  () => propertyValueOptions.value,
-  (options) => {
-    const objectUrls = Object.values(options)
-      .flatMap((items) => items.map((item) => item.picUrl?.trim() || ''))
-      .filter(Boolean);
     if (objectUrls.length) {
       void loadPreviewUrls(objectUrls);
     }

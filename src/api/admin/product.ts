@@ -38,7 +38,6 @@ export interface PropertyValueResp {
   name: string;
   status: number;
   remark?: string;
-  picUrl?: string;
   createTime?: number;
 }
 
@@ -173,7 +172,6 @@ export interface PropertyValueSaveReq {
   name: string;
   status: number;
   remark?: string;
-  picUrl?: string;
 }
 
 export interface SpuSaveReq {

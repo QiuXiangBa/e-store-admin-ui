@@ -46,18 +46,6 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="图片" width="96">
-        <template #default="scope">
-          <el-image
-            v-if="scope.row.picUrl"
-            :src="getPreviewUrl(scope.row.picUrl)"
-            fit="cover"
-            style="width: 36px; height: 36px; border-radius: 6px"
-            :preview-src-list="getPreviewUrl(scope.row.picUrl) ? [getPreviewUrl(scope.row.picUrl)] : []"
-          />
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
       <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
       <el-table-column label="创建时间" width="180">
         <template #default="scope">{{ formatTime(scope.row.createTime) }}</template>
@@ -108,15 +96,6 @@
           <el-option :value="1" label="禁用" />
         </el-select>
       </el-form-item>
-      <el-form-item v-if="supportsImage" :label="valueImageRequired ? '图片（必填）' : '图片'">
-        <div class="upload-row">
-          <el-input v-model="form.picUrl" placeholder="上传后自动回填 objectUrl" />
-          <el-button :loading="uploadingPic" @click="triggerUpload">上传图片</el-button>
-        </div>
-      </el-form-item>
-      <el-form-item v-if="supportsImage && picPreviewUrl" label="预览">
-        <el-image :src="picPreviewUrl" fit="cover" style="width: 96px; height: 96px; border-radius: 8px" :preview-src-list="[picPreviewUrl]" />
-      </el-form-item>
       <el-form-item label="备注">
         <el-input v-model="form.remark" type="textarea" :rows="3" placeholder="选填" />
       </el-form-item>
@@ -126,13 +105,10 @@
       <el-button type="primary" @click="onSubmit">{{ editingId ? '保存修改' : '新增属性值' }}</el-button>
     </template>
   </el-dialog>
-
-  <input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleSelectFile" />
 </template>
 
 <script setup lang="ts">
-import axios from 'axios';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -140,8 +116,6 @@ import {
   deletePropertyValue,
   getCategoryList,
   getCategoryPropertyList,
-  getPresignedDownloadUrl,
-  getPresignedUploadUrl,
   getPropertyPage,
   getPropertyValuePage,
   type CategoryPropertyResp,
@@ -156,7 +130,6 @@ interface PropertyValueForm {
   name: string;
   status: number;
   remark: string;
-  picUrl: string;
 }
 
 const route = useRoute();
@@ -166,8 +139,7 @@ const EMPTY_FORM: PropertyValueForm = {
   propertyId: fixedPropertyId || 0,
   name: '',
   status: 0,
-  remark: '',
-  picUrl: ''
+  remark: ''
 };
 
 const PROPERTY_TYPE_SALES = 1;
@@ -191,58 +163,15 @@ const editingId = ref<number | null>(null);
 const form = ref<PropertyValueForm>({ ...EMPTY_FORM });
 const formErrorMessage = ref('');
 
-const uploadingPic = ref(false);
-const fileInputRef = ref<HTMLInputElement | null>(null);
-const previewUrlMap = ref<Record<string, string>>({});
-
 const propertyNameMap = computed<Record<number, string>>(() =>
   Object.fromEntries(properties.value.map((item) => [item.id, item.name]))
 );
-
-const selectedBinding = computed(() => {
-  const selectedPropertyId = fixedPropertyId || form.value.propertyId;
-  if (!selectedPropertyId) {
-    return undefined;
-  }
-  return categoryPropertyMap.value[selectedPropertyId];
-});
-
-const supportsImage = computed(() => Boolean(selectedBinding.value?.supportValueImage));
-const valueImageRequired = computed(() => Boolean(selectedBinding.value?.valueImageRequired));
-const picPreviewUrl = computed(() => getPreviewUrl(form.value.picUrl));
 
 function formatTime(value?: number) {
   if (!value) {
     return '-';
   }
   return new Date(value).toLocaleString();
-}
-
-function getPreviewUrl(objectUrl?: string) {
-  const key = objectUrl?.trim();
-  if (!key) {
-    return '';
-  }
-  return previewUrlMap.value[key] || '';
-}
-
-async function loadPreviewUrls(objectUrls: string[]) {
-  const unique = Array.from(new Set(objectUrls.map((item) => item.trim()).filter(Boolean)));
-  const pending = unique.filter((item) => !previewUrlMap.value[item]);
-  if (!pending.length) {
-    return;
-  }
-  const entries = await Promise.all(
-    pending.map(async (objectUrl) => {
-      try {
-        const resp = await getPresignedDownloadUrl({ objectUrl });
-        return [objectUrl, resp.downloadUrl] as const;
-      } catch (_error) {
-        return [objectUrl, ''] as const;
-      }
-    })
-  );
-  previewUrlMap.value = Object.fromEntries([...Object.entries(previewUrlMap.value), ...entries]);
 }
 
 async function loadBasicData() {
@@ -278,7 +207,6 @@ async function loadData() {
     });
     items.value = page.list || [];
     total.value = page.total || 0;
-    await loadPreviewUrls(items.value.map((item) => item.picUrl || ''));
   } catch (error) {
     ElMessage.error((error as Error).message);
   } finally {
@@ -319,8 +247,7 @@ function openEditDialog(item: PropertyValueResp) {
     propertyId: item.propertyId,
     name: item.name,
     status: item.status,
-    remark: item.remark || '',
-    picUrl: item.picUrl || ''
+    remark: item.remark || ''
   };
   formErrorMessage.value = '';
   formOpen.value = true;
@@ -337,17 +264,11 @@ async function onSubmit() {
     formErrorMessage.value = '请填写完整必填字段';
     return;
   }
-  if (valueImageRequired.value && !form.value.picUrl.trim()) {
-    formErrorMessage.value = '当前类目要求规格值图片必填';
-    return;
-  }
-
   try {
     const payload = {
       ...form.value,
       propertyId: currentPropertyId,
-      name: form.value.name.trim(),
-      picUrl: supportsImage.value ? form.value.picUrl.trim() : ''
+      name: form.value.name.trim()
     };
     if (editingId.value) {
       await updatePropertyValue({ ...payload, id: editingId.value });
@@ -377,55 +298,6 @@ async function onDelete(id: number) {
   }
 }
 
-function triggerUpload() {
-  fileInputRef.value?.click();
-}
-
-async function handleSelectFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) {
-    return;
-  }
-  input.value = '';
-  uploadingPic.value = true;
-  try {
-    const sign = await getPresignedUploadUrl({
-      fileName: file.name,
-      contentType: file.type || 'application/octet-stream',
-      pathPrefix: 'product/property/value'
-    });
-    await axios.put(sign.uploadUrl, file, {
-      headers: { 'Content-Type': file.type || 'application/octet-stream' }
-    });
-    form.value.picUrl = sign.objectUrl;
-    await loadPreviewUrls([sign.objectUrl]);
-    ElMessage.success('上传成功');
-  } catch (error) {
-    formErrorMessage.value = `图片上传失败：${(error as Error).message}`;
-  } finally {
-    uploadingPic.value = false;
-  }
-}
-
-watch(
-  () => form.value.picUrl,
-  (value) => {
-    if (value?.trim()) {
-      void loadPreviewUrls([value]);
-    }
-  }
-);
-
-watch(
-  () => form.value.propertyId,
-  () => {
-    if (!supportsImage.value) {
-      form.value.picUrl = '';
-    }
-  }
-);
-
 onMounted(async () => {
   await loadBasicData();
   await loadData();
@@ -454,10 +326,4 @@ onMounted(async () => {
   margin-top: 12px;
 }
 
-.upload-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  width: 100%;
-}
 </style>
