@@ -490,6 +490,12 @@ interface DetailModule {
   content: string;
 }
 
+interface DetailModulePayload {
+  type: DetailModuleType;
+  content: string;
+  sort: number;
+}
+
 interface CategoryCascaderOption {
   id: number;
   parentId: number;
@@ -527,7 +533,7 @@ function createDefaultForm(): SpuSaveReq {
     name: '',
     keyword: '',
     introduction: '',
-    description: '',
+    description: '[]',
     barCode: '',
     categoryId: 0,
     brandId: 0,
@@ -984,13 +990,48 @@ function generateDetailModuleId() {
   return `detail-module-${Date.now()}-${detailModuleSeed.value}`;
 }
 
+function buildDescriptionPayload(modules: DetailModule[]): DetailModulePayload[] {
+  return modules
+    .map((item, index) => ({
+      type: item.type,
+      content: item.content?.trim() || '',
+      sort: index + 1
+    }))
+    .filter((item) => Boolean(item.content));
+}
+
+function buildDescriptionJson(modules: DetailModule[]) {
+  return JSON.stringify(buildDescriptionPayload(modules));
+}
+
+function parseDescriptionJson(description: string): DetailModule[] {
+  const text = description?.trim();
+  if (!text) {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (_error) {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  return (parsed as DetailModulePayload[])
+    .filter((item) => (item.type === 'text' || item.type === 'image') && Boolean(item.content?.trim()))
+    .sort((left, right) => Number(left.sort || 0) - Number(right.sort || 0))
+    .map((item) => ({
+      id: generateDetailModuleId(),
+      type: item.type,
+      content: item.content.trim()
+    }));
+}
+
 function syncDescriptionFromModules() {
-  const text = detailModules.value
-    .map((item) => (item.type === 'image' ? `<img src="${item.content}" />` : item.content))
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .join('\n');
-  form.value.description = text;
+  // description 统一存储为详情模块 JSON，不再拼接 HTML 字符串。
+  // Persist description as JSON module array instead of concatenated HTML.
+  form.value.description = buildDescriptionJson(detailModules.value);
 }
 
 function addDetailTextModule() {
@@ -1363,8 +1404,9 @@ async function loadDetail(targetId: number) {
     ...collectSkuRelatedObjectUrls(detailSkus)
   ]);
   detailModules.value = detail.description?.trim()
-    ? [{ id: generateDetailModuleId(), type: 'text', content: detail.description }]
+    ? parseDescriptionJson(detail.description)
     : [];
+  syncDescriptionFromModules();
 
   const propertyListFromDetail = buildPropertyListFromSkus(detailSkus);
   propertyList.value = propertyListFromDetail;
@@ -1388,9 +1430,15 @@ async function submit() {
     return;
   }
 
-  if (!form.value.name || !form.value.keyword || !form.value.introduction || !form.value.description || !form.value.picUrl) {
+  if (!form.value.name || !form.value.keyword || !form.value.introduction || !form.value.picUrl) {
     errorMessage.value = '请完善基础信息';
     activeSection.value = 'info';
+    return;
+  }
+
+  if (!detailModules.value.length) {
+    errorMessage.value = '请至少配置一条宝贝详情（文字或图片）';
+    activeSection.value = 'description';
     return;
   }
 
@@ -1452,6 +1500,7 @@ async function submit() {
   try {
     const payload: SpuSaveReq = {
       ...form.value,
+      description: buildDescriptionJson(detailModules.value),
       specType: true,
       subCommissionType: false,
       skus: form.value.skus.map((sku) => ({
