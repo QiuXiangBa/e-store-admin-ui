@@ -52,7 +52,14 @@
       <el-table-column label="商品" min-width="240">
         <template #default="scope">
           <div class="product-cell">
-            <el-image :src="scope.row.picUrl" fit="cover" style="width: 40px; height: 40px; border-radius: 6px" />
+            <el-image
+              v-if="resolvePreviewUrl(scope.row.picUrl)"
+              :src="resolvePreviewUrl(scope.row.picUrl)"
+              fit="cover"
+              style="width: 40px; height: 40px; border-radius: 6px"
+              :preview-src-list="resolvePreviewUrl(scope.row.picUrl) ? [resolvePreviewUrl(scope.row.picUrl)] : []"
+            />
+            <span v-else>-</span>
             <span>{{ scope.row.name }}</span>
           </div>
         </template>
@@ -129,6 +136,7 @@ import {
   deleteSpu,
   getBrandSimpleList,
   getCategoryList,
+  getPresignedDownloadUrl,
   getSpuCount,
   getSpuPage,
   type BrandResp,
@@ -149,6 +157,7 @@ const categories = ref<CategoryResp[]>([]);
 const counts = ref<SpuCountResp>();
 
 const items = ref<SpuResp[]>([]);
+const previewUrlMap = ref<Record<string, string>>({});
 const total = ref(0);
 const pageNum = ref(1);
 const pageSize = ref(10);
@@ -171,6 +180,33 @@ function formatTime(value?: number) {
   return new Date(value).toLocaleString();
 }
 
+function resolvePreviewUrl(objectUrl?: string) {
+  const key = objectUrl?.trim();
+  if (!key) {
+    return '';
+  }
+  return previewUrlMap.value[key] || '';
+}
+
+async function loadPreviewUrls(objectUrls: string[]) {
+  const unique = Array.from(new Set(objectUrls.map((item) => item.trim()).filter(Boolean)));
+  const pending = unique.filter((item) => !previewUrlMap.value[item]);
+  if (!pending.length) {
+    return;
+  }
+  const entries = await Promise.all(
+    pending.map(async (objectUrl) => {
+      try {
+        const resp = await getPresignedDownloadUrl({ objectUrl });
+        return [objectUrl, resp.downloadUrl] as const;
+      } catch (_error) {
+        return [objectUrl, ''] as const;
+      }
+    })
+  );
+  previewUrlMap.value = Object.fromEntries([...Object.entries(previewUrlMap.value), ...entries]);
+}
+
 async function loadMeta() {
   const [brandList, categoryList, countResp] = await Promise.all([getBrandSimpleList(), getCategoryList(), getSpuCount()]);
   brands.value = brandList;
@@ -188,6 +224,7 @@ async function loadData() {
       brandId: brandId.value
     });
     items.value = page.list || [];
+    await loadPreviewUrls(items.value.map((item) => item.picUrl || ''));
     total.value = page.total || 0;
   } catch (error) {
     ElMessage.error((error as Error).message);
